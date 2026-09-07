@@ -204,9 +204,11 @@ async function main() {
   await db.delete(schema.announcementRecipients);
   await db.delete(schema.ticketEvents);
   await db.delete(schema.ticketAttachments);
+  await db.delete(schema.ticketSimilarityCandidates);
   await db.delete(schema.tickets);
   await db.delete(schema.incidents);
   await db.delete(schema.announcements);
+  await db.delete(schema.reminderNoticeThresholds);
   await db.delete(schema.reminders);
   await db.delete(schema.documents);
   await db.delete(schema.unitOccupancies);
@@ -1363,54 +1365,80 @@ async function main() {
   console.log(`avisos: 2, destinatarios: ${recipientDefs.length}`);
 
   // ---------------------------------------------------------------------
-  // 4 recordatorios (vencido, próximo, dos lejanos)
+  // 4 recordatorios (vencido, próximo, dos lejanos). `noticeDays` es la
+  // columna PUENTE (= umbral más grande, lo que lee el semáforo/campana/
+  // resumen); los umbrales reales viven en `reminder_notice_thresholds`,
+  // poblados abajo -- dos recordatorios con un solo umbral, uno con dos,
+  // uno con tres, para que un dev recién sembrado vea el caso completo.
   // ---------------------------------------------------------------------
-  await db.insert(schema.reminders).values([
-    {
-      organizationId: organization.id,
-      buildingId: torreCentral.id,
-      title: "Recarga de matafuegos",
-      description:
-        "Recarga anual obligatoria de los matafuegos de todo el edificio, incluidas cocheras.",
-      dueDate: dueDateOffsetDays(-20),
-      recurrence: "annual",
-      noticeDays: 15,
-      status: "notified",
-      lastNotifiedAt: reportedAtDaysAgo(25, 9),
-    },
-    {
-      organizationId: organization.id,
-      buildingId: losAlamos.id,
-      title: "Fumigación trimestral",
-      description: "Fumigación de espacios comunes y cocheras contra plagas.",
-      dueDate: dueDateOffsetDays(5),
-      recurrence: "quarterly",
-      noticeDays: 7,
-      status: "pending",
-    },
-    {
-      organizationId: organization.id,
-      buildingId: torreCentral.id,
-      title: "Service anual de ascensores",
-      description:
-        "Mantenimiento preventivo anual de los dos ascensores, según contrato con la empresa proveedora.",
-      dueDate: dueDateOffsetDays(240),
-      recurrence: "annual",
-      noticeDays: 30,
-      status: "pending",
-    },
-    {
-      organizationId: organization.id,
-      buildingId: cabildo.id,
-      title: "Limpieza de tanque de agua",
-      description:
-        "Limpieza y desinfección semestral del tanque de agua, exigida por normativa municipal.",
-      dueDate: dueDateOffsetDays(150),
-      recurrence: "biannual",
-      noticeDays: 10,
-      status: "pending",
-    },
-  ]);
+  const seededReminders = await db
+    .insert(schema.reminders)
+    .values([
+      {
+        organizationId: organization.id,
+        buildingId: torreCentral.id,
+        title: "Recarga de matafuegos",
+        description:
+          "Recarga anual obligatoria de los matafuegos de todo el edificio, incluidas cocheras.",
+        dueDate: dueDateOffsetDays(-20),
+        recurrence: "annual",
+        noticeDays: 15,
+        status: "notified",
+        lastNotifiedAt: reportedAtDaysAgo(25, 9),
+      },
+      {
+        organizationId: organization.id,
+        buildingId: losAlamos.id,
+        title: "Fumigación trimestral",
+        description: "Fumigación de espacios comunes y cocheras contra plagas.",
+        dueDate: dueDateOffsetDays(5),
+        recurrence: "quarterly",
+        noticeDays: 7,
+        status: "pending",
+      },
+      {
+        organizationId: organization.id,
+        buildingId: torreCentral.id,
+        title: "Service anual de ascensores",
+        description:
+          "Mantenimiento preventivo anual de los dos ascensores, según contrato con la empresa proveedora.",
+        dueDate: dueDateOffsetDays(240),
+        recurrence: "annual",
+        noticeDays: 30,
+        status: "pending",
+      },
+      {
+        organizationId: organization.id,
+        buildingId: cabildo.id,
+        title: "Limpieza de tanque de agua",
+        description:
+          "Limpieza y desinfección semestral del tanque de agua, exigida por normativa municipal.",
+        dueDate: dueDateOffsetDays(150),
+        recurrence: "biannual",
+        noticeDays: 10,
+        status: "pending",
+      },
+    ])
+    .returning({ id: schema.reminders.id });
+
+  // Umbrales por recordatorio, en el MISMO orden que el array de arriba.
+  // El mayor de cada lista coincide con el `noticeDays` puente de su
+  // recordatorio.
+  const seededThresholdsByReminder: number[][] = [
+    [15],
+    [7, 3, 0],
+    [30, 7],
+    [10],
+  ];
+  await db.insert(schema.reminderNoticeThresholds).values(
+    seededReminders.flatMap((reminder, index) =>
+      seededThresholdsByReminder[index]!.map((days) => ({
+        organizationId: organization.id,
+        reminderId: reminder.id,
+        noticeDays: days,
+      })),
+    ),
+  );
   console.log("recordatorios: 4");
 
   // ---------------------------------------------------------------------

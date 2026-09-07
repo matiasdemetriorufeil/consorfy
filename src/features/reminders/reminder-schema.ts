@@ -55,6 +55,14 @@ const DATE_HELP = "Ingresá una fecha válida.";
 const NOTICE_DAYS_MIN = 0;
 const NOTICE_DAYS_MAX = 365;
 
+// Un recordatorio puede tener entre 1 y 3 umbrales de aviso en días
+// (paso 2 de "múltiples umbrales"): "avisame 7 días antes, 3 días antes, y
+// el mismo día". Reemplaza al único `noticeDays` de antes. El tope de 3 es
+// una decisión de producto (no de base -- la tabla `reminder_notice_thresholds`
+// no cuenta filas hijas, mismo criterio que MAX_TICKET_PHOTOS).
+export const MIN_NOTICE_THRESHOLDS = 1;
+export const MAX_NOTICE_THRESHOLDS = 3;
+
 export const reminderFieldsSchema = z.object({
   title: z
     .string()
@@ -68,15 +76,29 @@ export const reminderFieldsSchema = z.object({
     .nullish()
     .transform((value) => (value ? value : null)),
   dueDate: z.string().regex(DATE_REGEX, DATE_HELP),
-  // z.number(), no z.coerce.number(): mismo motivo que floorStart/floorEnd
-  // en bulkUnitsFormSchema (unit-schema.ts) -- el <input type="number"> del
-  // formulario usa `valueAsNumber` de react-hook-form, que ya entrega un
-  // number real antes de que Zod lo vea.
-  noticeDays: z
-    .number({ message: "Ingresá los días de anticipación." })
-    .int()
-    .min(NOTICE_DAYS_MIN, `Como mínimo ${NOTICE_DAYS_MIN} días.`)
-    .max(NOTICE_DAYS_MAX, `Como máximo ${NOTICE_DAYS_MAX} días.`),
+  // Array de 1 a 3 enteros, cada uno 0..365 (mismo rango que validaba el
+  // `noticeDays` único). z.number() (no z.coerce.number()): mismo motivo
+  // que antes -- el <input type="number"> del formulario entrega numbers
+  // reales. El .refine() ataja los duplicados ANTES de que lleguen a la
+  // base: el índice único parcial (reminder_id, notice_days) de
+  // `reminder_notice_thresholds` los rechazaría igual, pero con un error
+  // crudo de Postgres en vez de este mensaje en español.
+  noticeDaysThresholds: z
+    .array(
+      z
+        .number({ message: "Ingresá los días de anticipación." })
+        .int("Los días de anticipación tienen que ser un número entero.")
+        .min(NOTICE_DAYS_MIN, `Como mínimo ${NOTICE_DAYS_MIN} días.`)
+        .max(NOTICE_DAYS_MAX, `Como máximo ${NOTICE_DAYS_MAX} días.`),
+    )
+    .min(MIN_NOTICE_THRESHOLDS, "Dejá al menos un umbral de aviso.")
+    .max(
+      MAX_NOTICE_THRESHOLDS,
+      `Como máximo ${MAX_NOTICE_THRESHOLDS} umbrales de aviso.`,
+    )
+    .refine((days) => new Set(days).size === days.length, {
+      message: "No repitas la misma cantidad de días en más de un umbral.",
+    }),
   recurrence: z.enum(REMINDER_RECURRENCES, {
     message: "Elegí una recurrencia.",
   }),
@@ -84,6 +106,19 @@ export const reminderFieldsSchema = z.object({
 
 export type ReminderFieldsInput = z.input<typeof reminderFieldsSchema>;
 export type ReminderFieldsOutput = z.output<typeof reminderFieldsSchema>;
+
+// El formulario (ReminderForm) maneja `noticeDaysThresholds` con estado
+// propio, NO react-hook-form -- mismo criterio que `buildingId`/`status`
+// (ver el comentario largo en reminder-form.tsx). Este subconjunto es el
+// que valida el zodResolver del cliente: los campos que sí viven en RHF.
+// El array de umbrales se valida en el servidor con `reminderFieldsSchema`
+// completo (vía createReminderFormSchema/updateReminderFormSchema).
+export const reminderClientFieldsSchema = reminderFieldsSchema.omit({
+  noticeDaysThresholds: true,
+});
+export type ReminderClientFieldsInput = z.input<
+  typeof reminderClientFieldsSchema
+>;
 
 // `buildingId` va DENTRO del esquema, no como argumento aparte -- mismo
 // criterio que createUnitFormSchema (unit-schema.ts): se valida en la misma

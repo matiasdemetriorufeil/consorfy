@@ -36,6 +36,20 @@ type DialogState =
   | { type: "edit"; reminder: ReminderListRow }
   | { type: "delete"; reminder: ReminderListRow };
 
+// Texto de la columna "Anticipación": todos los umbrales del recordatorio,
+// ya ordenados de mayor a menor por getReminderList. "7, 3 y 0 días antes"
+// -- coma entre todos menos el último, "y" antes del último. Con un solo
+// umbral se lee igual que cuando el campo era único ("7 días antes", y
+// "1 día antes" en singular).
+function formatNoticeThresholds(days: number[]): string {
+  if (days.length === 1) {
+    return days[0] === 1 ? "1 día antes" : `${days[0]} días antes`;
+  }
+  const allButLast = days.slice(0, -1).join(", ");
+  const last = days[days.length - 1];
+  return `${allButLast} y ${last} días antes`;
+}
+
 // Listado de recordatorios (paso 9.1) -- mismo patrón que UnitsList (paso
 // 4.3): Client Component solo para manejar el estado de los diálogos, sin
 // paginación (ver el comentario de getReminderList) ni búsqueda de texto
@@ -133,9 +147,7 @@ export function RemindersList({
                 )}
                 <TableCell>{formatDueDate(reminder.dueDate)}</TableCell>
                 <TableCell>
-                  {reminder.noticeDays === 1
-                    ? "1 día antes"
-                    : `${reminder.noticeDays} días antes`}
+                  {formatNoticeThresholds(reminder.noticeDaysThresholds)}
                 </TableCell>
                 <TableCell>
                   <Badge variant="outline" className="font-body">

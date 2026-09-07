@@ -2,12 +2,14 @@
 
 import { startTransition, useActionState, useEffect, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Plus, X } from "lucide-react";
 import { Controller, useForm } from "react-hook-form";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Field,
+  FieldDescription,
   FieldError,
   FieldGroup,
   FieldLabel,
@@ -27,24 +29,35 @@ import { createReminderAction, updateReminderAction } from "../actions";
 import type { ReminderListRow } from "../queries";
 import {
   initialReminderFormState,
+  MAX_NOTICE_THRESHOLDS,
   RECURRENCE_LABEL,
+  reminderClientFieldsSchema,
   REMINDER_RECURRENCES,
   REMINDER_STATUS_LABEL,
   REMINDER_STATUSES,
-  reminderFieldsSchema,
-  type ReminderFieldsInput,
+  type ReminderClientFieldsInput,
   type ReminderStatusValue,
 } from "../reminder-schema";
 
 // Campos que sí viven en react-hook-form -- ver el comentario de más abajo
-// sobre por qué `buildingId`/`status` quedan afuera.
-const RHF_MANAGED_FIELDS = new Set<keyof ReminderFieldsInput>([
+// sobre por qué `buildingId`/`status`/`noticeDaysThresholds` quedan afuera.
+const RHF_MANAGED_FIELDS = new Set<keyof ReminderClientFieldsInput>([
   "title",
   "description",
   "dueDate",
-  "noticeDays",
   "recurrence",
 ]);
+
+// La lista de umbrales se maneja como estado propio (strings, lo que
+// entrega un <input type="number"> vacío o a medio tipear), no en
+// react-hook-form -- mismo motivo que `buildingId`/`status`. Se convierten
+// a numbers recién al armar el payload; un campo vacío -> NaN, que el
+// esquema del servidor rechaza con un mensaje claro.
+function parseThresholdInputs(values: string[]): number[] {
+  return values.map((value) =>
+    value.trim() === "" ? Number.NaN : Number(value),
+  );
+}
 
 // Un solo formulario para alta y edición (mismo criterio que UnitForm,
 // paso 4.3). `buildingId`/`status` viven FUERA de react-hook-form (estado
@@ -86,6 +99,33 @@ export function ReminderForm({
   const [status, setStatus] = useState<ReminderStatusValue>(
     reminder?.status ?? "pending",
   );
+  // Umbrales de aviso (1 a 3). En edición se precargan desde los umbrales
+  // REALES del recordatorio (`reminder.noticeDaysThresholds`, ya resueltos
+  // por getReminderList -- que además cubre el caso borde del recordatorio
+  // sin ninguna fila hija cayendo a `[notice_days]`), no desde
+  // `reminder.noticeDays`. En alta, un solo umbral de 7 días (el default
+  // que tenía el campo único).
+  const [thresholds, setThresholds] = useState<string[]>(
+    reminder
+      ? reminder.noticeDaysThresholds.map((days) => String(days))
+      : ["7"],
+  );
+
+  function updateThreshold(index: number, value: string) {
+    setThresholds((current) =>
+      current.map((entry, i) => (i === index ? value : entry)),
+    );
+  }
+  function addThreshold() {
+    setThresholds((current) =>
+      current.length < MAX_NOTICE_THRESHOLDS ? [...current, ""] : current,
+    );
+  }
+  function removeThreshold(index: number) {
+    setThresholds((current) =>
+      current.length > 1 ? current.filter((_, i) => i !== index) : current,
+    );
+  }
 
   const {
     register,
@@ -94,21 +134,19 @@ export function ReminderForm({
     setError,
     setFocus,
     formState: { errors },
-  } = useForm<ReminderFieldsInput>({
-    resolver: zodResolver(reminderFieldsSchema),
+  } = useForm<ReminderClientFieldsInput>({
+    resolver: zodResolver(reminderClientFieldsSchema),
     defaultValues: reminder
       ? {
           title: reminder.title,
           description: reminder.description ?? "",
           dueDate: reminder.dueDate,
-          noticeDays: reminder.noticeDays,
           recurrence: reminder.recurrence,
         }
       : {
           title: "",
           description: "",
           dueDate: "",
-          noticeDays: 7,
           recurrence: "none",
         },
   });
@@ -122,10 +160,10 @@ export function ReminderForm({
     }
 
     const entries = Object.entries(state.fieldErrors) as [
-      keyof ReminderFieldsInput,
+      keyof ReminderClientFieldsInput,
       string,
     ][];
-    let firstField: keyof ReminderFieldsInput | null = null;
+    let firstField: keyof ReminderClientFieldsInput | null = null;
     for (const [field, message] of entries) {
       // `buildingId`/`status` no son campos de react-hook-form (ver el
       // comentario de arriba) -- sus errores de servidor se leen aparte
@@ -144,19 +182,25 @@ export function ReminderForm({
   }, [state]);
 
   const buildingError = !state.ok ? state.fieldErrors.buildingId : undefined;
+  const thresholdsError = !state.ok
+    ? state.fieldErrors.noticeDaysThresholds
+    : undefined;
+  const atMaxThresholds = thresholds.length >= MAX_NOTICE_THRESHOLDS;
 
   return (
     <form
       noValidate
       onSubmit={handleSubmit((data) => {
+        const noticeDaysThresholds = parseThresholdInputs(thresholds);
         const payload = reminder
           ? {
               ...data,
               id: reminder.id,
               buildingId: reminder.buildingId,
               status,
+              noticeDaysThresholds,
             }
-          : { ...data, buildingId };
+          : { ...data, buildingId, noticeDaysThresholds };
         startTransition(() => dispatch(payload));
       })}
     >
@@ -240,20 +284,66 @@ export function ReminderForm({
           <FieldError errors={[errors.dueDate]} />
         </Field>
 
-        <Field data-invalid={!!errors.noticeDays}>
-          <FieldLabel htmlFor="reminder-notice-days">
+        {/* Días de anticipación -- de 1 a 3 umbrales ("avisame 7 días
+            antes, 3 días antes, y el mismo día"). Lista con estado propio
+            + botones agregar/quitar, mismo estilo de "lista de hasta N
+            elementos" que ya usa AnnouncementSegmentForm (personas
+            puntuales) y los adjuntos de TicketForm: <Button variant=
+            "outline"> para agregar, un botón-ícono por fila para quitar. */}
+        <Field data-invalid={!!thresholdsError}>
+          <FieldLabel htmlFor="reminder-notice-days-0">
             Días de anticipación
           </FieldLabel>
-          <Input
-            id="reminder-notice-days"
-            type="number"
-            min={0}
-            max={365}
-            aria-invalid={!!errors.noticeDays}
-            disabled={isPending}
-            {...register("noticeDays", { valueAsNumber: true })}
+          <FieldDescription>
+            Cuántos días antes del vencimiento querés que te avisemos. Podés
+            cargar hasta {MAX_NOTICE_THRESHOLDS}.
+          </FieldDescription>
+          <div className="flex flex-col gap-2">
+            {thresholds.map((value, index) => (
+              <div key={index} className="flex items-center gap-2">
+                <Input
+                  id={`reminder-notice-days-${index}`}
+                  type="number"
+                  min={0}
+                  max={365}
+                  className="flex-1"
+                  aria-label={`Umbral de aviso ${index + 1}, en días`}
+                  aria-invalid={!!thresholdsError}
+                  disabled={isPending}
+                  value={value}
+                  onChange={(event) =>
+                    updateThreshold(index, event.target.value)
+                  }
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={`Quitar el umbral de aviso ${index + 1}`}
+                  disabled={isPending || thresholds.length <= 1}
+                  onClick={() => removeThreshold(index)}
+                >
+                  <X />
+                </Button>
+              </div>
+            ))}
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="mt-1 w-fit"
+            disabled={isPending || atMaxThresholds}
+            onClick={addThreshold}
+          >
+            <Plus />
+            Agregar otro umbral
+          </Button>
+          <FieldError
+            errors={[
+              thresholdsError ? { message: thresholdsError } : undefined,
+            ]}
           />
-          <FieldError errors={[errors.noticeDays]} />
         </Field>
 
         <Field data-invalid={!!errors.recurrence}>

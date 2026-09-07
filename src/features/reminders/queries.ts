@@ -1,9 +1,9 @@
 import "server-only";
 
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 
 import { db } from "@/db";
-import { buildings, reminders } from "@/db/schema";
+import { buildings, reminderNoticeThresholds, reminders } from "@/db/schema";
 
 import type { ReminderStatusValue } from "./reminder-schema";
 
@@ -14,7 +14,18 @@ export type ReminderListRow = {
   title: string;
   description: string | null;
   dueDate: string;
+  // Umbral MÁS GRANDE de los del recordatorio (columna puente
+  // `reminders.notice_days`, mantenida en sync por las Server Actions
+  // hasta que el paso 3 la elimine). getReminderUrgency -- el semáforo, la
+  // campana (sweepDueReminders) y el resumen diario -- sigue leyendo
+  // ESTO, sin cambios en este paso.
   noticeDays: number;
+  // Los umbrales reales (1 a 3, ordenados de mayor a menor) desde
+  // `reminder_notice_thresholds`. Para precargar el formulario de edición.
+  // Caso borde (recordatorio sin ninguna fila hija todavía -- p. ej. uno
+  // sembrado después de la migración): cae a `[notice_days]` para no
+  // mostrar una lista vacía ni romper.
+  noticeDaysThresholds: number[];
   recurrence: (typeof reminders.$inferSelect)["recurrence"];
   status: ReminderStatusValue;
 };
@@ -53,6 +64,16 @@ export async function getReminderList(
       description: reminders.description,
       dueDate: reminders.dueDate,
       noticeDays: reminders.noticeDays,
+      noticeDaysThresholds: sql<number[]>`coalesce(
+        (
+          select array_agg(t.notice_days order by t.notice_days desc)
+          from ${reminderNoticeThresholds} t
+          where t.reminder_id = ${reminders.id}
+            and t.organization_id = ${reminders.organizationId}
+            and t.deleted_at is null
+        ),
+        array[${reminders.noticeDays}]
+      )`,
       recurrence: reminders.recurrence,
       status: reminders.status,
     })
