@@ -10,6 +10,7 @@ import { incidents } from "./incidents";
 import { notifications } from "./notifications";
 import { organizations } from "./organizations";
 import { people } from "./people";
+import { reminderNoticeThresholds } from "./reminder-notice-thresholds";
 import { reminders } from "./reminders";
 import { ticketAttachments } from "./ticket-attachments";
 import { ticketEvents } from "./ticket-events";
@@ -192,7 +193,18 @@ export const remindersRelations = relations(reminders, ({ one, many }) => ({
     references: [buildings.id],
   }),
   notifications: many(notifications),
+  noticeThresholds: many(reminderNoticeThresholds),
 }));
+
+export const reminderNoticeThresholdsRelations = relations(
+  reminderNoticeThresholds,
+  ({ one }) => ({
+    reminder: one(reminders, {
+      fields: [reminderNoticeThresholds.reminderId],
+      references: [reminders.id],
+    }),
+  }),
+);
 
 // supersedes/supersededBy son la misma relación autorreferenciada mirada
 // desde los dos lados -- relationName las distingue porque Drizzle no puede

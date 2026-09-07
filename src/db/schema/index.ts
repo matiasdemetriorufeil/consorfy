@@ -15,6 +15,7 @@ export * from "./ticket-similarity-candidates";
 export * from "./announcements";
 export * from "./announcement-recipients";
 export * from "./reminders";
+export * from "./reminder-notice-thresholds";
 export * from "./documents";
 export * from "./notifications";
 export * from "./login-attempts";

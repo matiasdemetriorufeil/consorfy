@@ -302,6 +302,20 @@
       "when": 1788445210772,
       "tag": "0042_medical_gargoyle",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1788810957080,
+      "tag": "0043_furry_blacklash",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1788810979291,
+      "tag": "0044_reminder_notice_thresholds_trigger_and_backfill",
+      "breakpoints": true
     }
   ]
 }
