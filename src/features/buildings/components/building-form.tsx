@@ -9,8 +9,9 @@ import {
   useState,
   type ChangeEvent,
 } from "react";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 
+import { PhoneNumberInput } from "@/components/phone-number-input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -67,6 +68,7 @@ export function BuildingForm({
 
   const {
     register,
+    control,
     handleSubmit,
     watch,
     setValue,
@@ -299,14 +301,22 @@ export function BuildingForm({
           <FieldLabel htmlFor="building-admin-whatsapp">
             WhatsApp del administrador
           </FieldLabel>
-          <Input
-            id="building-admin-whatsapp"
-            type="tel"
-            autoComplete="off"
-            placeholder="+5493515551234"
-            aria-invalid={!!errors.adminWhatsappE164}
-            disabled={isPending}
-            {...register("adminWhatsappE164")}
+          <Controller
+            control={control}
+            name="adminWhatsappE164"
+            render={({ field }) => (
+              <PhoneNumberInput
+                id="building-admin-whatsapp"
+                name={field.name}
+                ref={field.ref}
+                value={field.value}
+                onChange={field.onChange}
+                onBlur={field.onBlur}
+                disabled={isPending}
+                placeholder="93515551234"
+                aria-invalid={!!errors.adminWhatsappE164}
+              />
+            )}
           />
           {/* La ayuda estática y el error de formato dicen lo mismo -- se
               esconde una cuando aparece la otra para no repetir el mismo
