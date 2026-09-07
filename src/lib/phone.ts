@@ -17,7 +17,7 @@
 // real de la app.
 export const AR_WHATSAPP_E164_REGEX = /^\+549\d{10}$/;
 export const AR_WHATSAPP_HELP =
-  "Escribilo con código de país y de área, sin el 0 ni el 15, por ejemplo +5493515551234 para un celular de Córdoba (351) 555-1234.";
+  "Escribilo sin el 0 ni el 15 (código de área + número). Por ejemplo, 3515551234 para un celular de Córdoba.";
 
 // Código de país que TODOS los teléfonos de la app comparten (celular
 // argentino, ver AR_WHATSAPP_E164_REGEX). PhoneNumberInput
