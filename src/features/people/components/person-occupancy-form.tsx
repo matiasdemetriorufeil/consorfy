@@ -3,6 +3,7 @@
 import { startTransition, useActionState, useEffect, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 
+import { PhoneNumberInput } from "@/components/phone-number-input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -192,14 +193,22 @@ export function PersonOccupancyForm({
 
         <Field data-invalid={!!errors.phoneE164}>
           <FieldLabel htmlFor="person-phone">Teléfono</FieldLabel>
-          <Input
-            id="person-phone"
-            type="tel"
-            autoComplete="off"
-            placeholder="+5493515551234"
-            aria-invalid={!!errors.phoneE164}
-            disabled={isPending}
-            {...register("phoneE164")}
+          <Controller
+            control={control}
+            name="phoneE164"
+            render={({ field }) => (
+              <PhoneNumberInput
+                id="person-phone"
+                name={field.name}
+                ref={field.ref}
+                value={field.value}
+                onChange={field.onChange}
+                onBlur={field.onBlur}
+                disabled={isPending}
+                placeholder="93515551234"
+                aria-invalid={!!errors.phoneE164}
+              />
+            )}
           />
           {!errors.phoneE164 && lookup.status === "checking" && (
             <FieldDescription>Buscando…</FieldDescription>

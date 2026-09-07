@@ -19,6 +19,40 @@ export const AR_WHATSAPP_E164_REGEX = /^\+549\d{10}$/;
 export const AR_WHATSAPP_HELP =
   "Escribilo con código de país y de área, sin el 0 ni el 15, por ejemplo +5493515551234 para un celular de Córdoba (351) 555-1234.";
 
+// Código de país que TODOS los teléfonos de la app comparten (celular
+// argentino, ver AR_WHATSAPP_E164_REGEX). PhoneNumberInput
+// (src/components/phone-number-input.tsx) lo muestra como etiqueta fija no
+// editable y deja que la persona tipee solo lo que va después. Estas dos
+// funciones son el puente entre "valor E.164 completo" (lo que se guarda y
+// valida) y "parte editable" (lo que se ve en el input).
+export const AR_PHONE_PREFIX = "+54";
+
+// Valor guardado -> parte editable (sin el prefijo). Si el valor no
+// arranca con AR_PHONE_PREFIX -- no debería pasar para un dato ya validado
+// con AR_WHATSAPP_E164_REGEX, pero un import viejo, un seed o una edición
+// fuera de la UI podrían -- se devuelve entero como `rest`, sin recortar
+// nada, para no perder ni corromper el dato en silencio; `hadPrefix` deja
+// que el caller detecte ese caso.
+export function splitArPhone(value: string): {
+  rest: string;
+  hadPrefix: boolean;
+} {
+  if (value.startsWith(AR_PHONE_PREFIX)) {
+    return { rest: value.slice(AR_PHONE_PREFIX.length), hadPrefix: true };
+  }
+  return { rest: value, hadPrefix: false };
+}
+
+// Parte editable -> valor E.164 completo. Editable vacío (o solo espacios)
+// -> string vacío, NUNCA "+54" solo: en los formularios donde el teléfono
+// es opcional, "no escribió nada" tiene que seguir significando "sin
+// teléfono" y llegar como vacío al esquema (que lo transforma a null). El
+// contenido tipeado se pasa tal cual: la normalización de espacios/guiones
+// ya la hace normalizePhoneInput en el esquema.
+export function joinArPhone(rest: string): string {
+  return rest.trim() === "" ? "" : `${AR_PHONE_PREFIX}${rest}`;
+}
+
 // Espacios, guiones, puntos y paréntesis son ruido habitual al tipear un
 // teléfono a mano ("351 555-1234", "(351) 555.1234") -- se descartan antes
 // de validar el formato, para no rebotar por puntuación en vez de por el

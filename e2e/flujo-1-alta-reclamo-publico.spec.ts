@@ -19,6 +19,11 @@ const FIXTURE_PNG = path.resolve(
 const RUN_ID = Date.now();
 const RUN_TAG = `PRUEBA-E2E-12.2-${RUN_ID}`;
 const NEIGHBOR_PHONE = `+549351${String(RUN_ID).slice(-7)}`;
+// El campo #ticket-phone ahora es solo la parte editable: el "+54" es una
+// etiqueta fija de PhoneNumberInput, no se tipea. Se completa con el resto
+// del número (todo lo que va después de "+54"); el valor guardado en la
+// base sigue siendo NEIGHBOR_PHONE completo.
+const NEIGHBOR_PHONE_NATIONAL = NEIGHBOR_PHONE.slice("+54".length);
 
 // El pool de `helpers/db.ts` es un singleton compartido por todos los
 // specs de este worker (workers: 1) -- no se cierra en un afterAll de spec
@@ -40,7 +45,7 @@ test.describe("Flujo 1 - Alta de reclamo desde el formulario público", () => {
     await expect(page.getByText("Paso 1 de 4")).toBeVisible();
     await page.locator("#ticket-first-name").fill("Prueba E2E 12.2");
     await page.locator("#ticket-last-name").fill("Vecino");
-    await page.locator("#ticket-phone").fill(NEIGHBOR_PHONE);
+    await page.locator("#ticket-phone").fill(NEIGHBOR_PHONE_NATIONAL);
 
     // Unidad: combobox con las unidades reales del edificio.
     await page.locator("#ticket-unit").click();

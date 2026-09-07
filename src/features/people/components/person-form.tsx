@@ -2,8 +2,9 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { startTransition, useActionState, useEffect } from "react";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 
+import { PhoneNumberInput } from "@/components/phone-number-input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -44,6 +45,7 @@ export function PersonForm({
 
   const {
     register,
+    control,
     handleSubmit,
     setError,
     setFocus,
@@ -122,14 +124,22 @@ export function PersonForm({
 
         <Field data-invalid={!!errors.phoneE164}>
           <FieldLabel htmlFor="edit-person-phone">Teléfono</FieldLabel>
-          <Input
-            id="edit-person-phone"
-            type="tel"
-            autoComplete="off"
-            placeholder="+5493515551234"
-            aria-invalid={!!errors.phoneE164}
-            disabled={isPending}
-            {...register("phoneE164")}
+          <Controller
+            control={control}
+            name="phoneE164"
+            render={({ field }) => (
+              <PhoneNumberInput
+                id="edit-person-phone"
+                name={field.name}
+                ref={field.ref}
+                value={field.value ?? ""}
+                onChange={field.onChange}
+                onBlur={field.onBlur}
+                disabled={isPending}
+                placeholder="93515551234"
+                aria-invalid={!!errors.phoneE164}
+              />
+            )}
           />
           {!errors.phoneE164 && (
             <FieldDescription>{AR_WHATSAPP_HELP}</FieldDescription>

@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { PhoneNumberInput } from "@/components/phone-number-input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -86,13 +87,12 @@ const TOUCH_TARGETS =
 const DEFAULT_VALUES: PublicTicketFormInput = {
   firstName: "",
   lastName: "",
-  // Precargado con el código de país para que el vecino solo complete el
-  // resto del número (pedido del administrador). Es un valor inicial
-  // editable, NO un prefijo fijo: se puede borrar y escribir otra cosa
-  // (ej. un número de otro país). "+54" solo no pasa AR_WHATSAPP_E164_REGEX
-  // (ver requiredPhoneSchema en ../ticket-schema.ts), así que no alcanza
-  // para enviar el formulario -- igual que cuando el campo venía vacío.
-  phoneE164: "+54",
+  // Vacío: el "+54" lo muestra PhoneNumberInput como etiqueta fija, no es
+  // parte del valor guardado. Con la parte editable vacía, este campo
+  // llega vacío a requiredPhoneSchema (../ticket-schema.ts) y la
+  // validación lo rechaza igual que siempre -- el teléfono acá es
+  // obligatorio.
+  phoneE164: "",
   unitNotListed: false,
   unitId: null,
   unitLabelRaw: "",
@@ -955,13 +955,21 @@ export function TicketForm({
 
                 <Field data-invalid={!!errors.phoneE164}>
                   <FieldLabel htmlFor="ticket-phone">Tu teléfono</FieldLabel>
-                  <Input
-                    id="ticket-phone"
-                    type="tel"
-                    autoComplete="tel"
-                    placeholder="+5493515551234"
-                    aria-invalid={!!errors.phoneE164}
-                    {...register("phoneE164")}
+                  <Controller
+                    control={control}
+                    name="phoneE164"
+                    render={({ field }) => (
+                      <PhoneNumberInput
+                        id="ticket-phone"
+                        name={field.name}
+                        ref={field.ref}
+                        value={field.value}
+                        onChange={field.onChange}
+                        onBlur={field.onBlur}
+                        placeholder="93515551234"
+                        aria-invalid={!!errors.phoneE164}
+                      />
+                    )}
                   />
                   {!errors.phoneE164 && (
                     <FieldDescription>
