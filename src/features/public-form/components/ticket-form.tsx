@@ -86,7 +86,13 @@ const TOUCH_TARGETS =
 const DEFAULT_VALUES: PublicTicketFormInput = {
   firstName: "",
   lastName: "",
-  phoneE164: "",
+  // Precargado con el código de país para que el vecino solo complete el
+  // resto del número (pedido del administrador). Es un valor inicial
+  // editable, NO un prefijo fijo: se puede borrar y escribir otra cosa
+  // (ej. un número de otro país). "+54" solo no pasa AR_WHATSAPP_E164_REGEX
+  // (ver requiredPhoneSchema en ../ticket-schema.ts), así que no alcanza
+  // para enviar el formulario -- igual que cuando el campo venía vacío.
+  phoneE164: "+54",
   unitNotListed: false,
   unitId: null,
   unitLabelRaw: "",

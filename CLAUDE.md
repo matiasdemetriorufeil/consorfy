@@ -8811,8 +8811,7 @@ confirmarle a quien ya lo tiene que está en el lugar correcto es útil, no
 una divulgación nueva -- mismo criterio que `/r/[token]` con el nombre del
 edificio (CLAUDE.md > Auditoría de la superficie pública, punto f.1).
 
-**Organización válida pero sin ningún edificio activo -- 200 con mensaje, no
-404.** Se muestra un texto honesto ("Esta administración todavía no tiene
+**Organización válida pero sin ningún edificio activo -- 200 con mensaje, no 404.** Se muestra un texto honesto ("Esta administración todavía no tiene
 edificios disponibles para cargar reclamos. Comunicate directo con tu
 administración.") en vez de esconder la página: el token ya autorizó a esta
 persona a ver esta pantalla, mismo criterio que `/s/[token]` con un reclamo
@@ -8830,7 +8829,7 @@ formulario público de ESE edificio).
   que `getBuildingByPublicToken`.
 - `getActiveBuildingsForOrganization(organizationId)` ->
   `{ name, publicToken }[]`. `WHERE organization_id = $1 AND active = true
-  AND deleted_at IS NULL ORDER BY name`. El `organizationId` viene SIEMPRE
+AND deleted_at IS NULL ORDER BY name`. El `organizationId` viene SIEMPRE
   del caller (lo resolvió `getOrganizationByPublicToken` en la misma
   request); esta función nunca resuelve su propia autorización -- patrón de
   queries por organización de CLAUDE.md > Acceso a datos.
@@ -8884,7 +8883,7 @@ quien retome el proyecto:
 - **`src/features/organizations/queries.ts`** ->
   `getOrganizationPublicToken(organizationId)` -> `Promise<string | null>`.
   `server-only`, `cache()`. Un solo `SELECT public_token FROM organizations
-  WHERE id = $1`. **NO se agregó `publicToken` a `AuthorizedUser` /
+WHERE id = $1`. **NO se agregó `publicToken` a `AuthorizedUser` /
   `requireUser()`** a propósito: cargaría ese dato en cada request del panel
   para algo que hoy usa una sola pantalla. El `organizationId` viene siempre
   del caller (la page, vía `requireUser()`), nunca se resuelve adentro
