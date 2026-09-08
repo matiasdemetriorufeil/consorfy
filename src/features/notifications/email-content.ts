@@ -112,7 +112,9 @@ export type DailySummaryTicketRow = {
 export type DailySummaryReminderRow = {
   id: string;
   title: string;
-  buildingName: string;
+  // `null` = evento "General" (sin edificio): la línea omite el
+  // " (edificio)" en vez de mostrar "(null)".
+  buildingName: string | null;
   urgency: "overdue" | "upcoming";
 };
 
@@ -142,8 +144,9 @@ function renderReminderList(rows: DailySummaryReminderRow[]): string {
     .map((r) => {
       const color = r.urgency === "overdue" ? COLOR_URGENTE : COLOR_INK;
       const tag = r.urgency === "overdue" ? "Vencido" : "Próximo";
+      const building = r.buildingName ? ` (${r.buildingName})` : "";
       return `<li style="margin-bottom:8px;font-size:14px;color:${color};">
-        <strong>[${tag}]</strong> ${r.title} (${r.buildingName})
+        <strong>[${tag}]</strong> ${r.title}${building}
       </li>`;
     })
     .join("");
@@ -222,7 +225,9 @@ export function buildDailySummaryEmail(input: {
 // nunca llega vacío: nunca se manda un mail sin nada.
 export type ReminderThresholdEmailRow = {
   reminderTitle: string;
-  buildingName: string;
+  // `null` = evento "General" (sin edificio): la línea omite el
+  // " (edificio)" en vez de mostrar "(null)".
+  buildingName: string | null;
   noticeDays: number;
   // Fecha de vencimiento ya formateada por el caller ("31/12/2026") --
   // igual que el resto de este archivo recibe todo ya resuelto.
@@ -243,11 +248,12 @@ function renderReminderThresholdList(
   rows: ReminderThresholdEmailRow[],
 ): string {
   const items = rows
-    .map(
-      (r) => `<li style="margin-bottom:8px;font-size:14px;color:${COLOR_INK};">
-        <strong>${r.reminderTitle}</strong> (${r.buildingName}) -- vence el ${r.dueDateLabel}, ${renderNoticePhrase(r.noticeDays)}
-      </li>`,
-    )
+    .map((r) => {
+      const building = r.buildingName ? ` (${r.buildingName})` : "";
+      return `<li style="margin-bottom:8px;font-size:14px;color:${COLOR_INK};">
+        <strong>${r.reminderTitle}</strong>${building} -- vence el ${r.dueDateLabel}, ${renderNoticePhrase(r.noticeDays)}
+      </li>`;
+    })
     .join("");
   return `<ul style="margin:0;padding-left:18px;">${items}</ul>`;
 }

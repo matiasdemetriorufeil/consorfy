@@ -128,6 +128,21 @@ describe("buildReminderDueNotification", () => {
       link: "/panel/reminders",
     });
   });
+
+  it("evento General (sin edificio): el título omite el ' en {edificio}'", () => {
+    const result = buildReminderDueNotification({
+      buildingName: null,
+      reminderTitle: "Renovación de la póliza de seguro",
+      dueDate: "2026-09-01",
+      today: "2026-08-29",
+    });
+    expect(result).toEqual({
+      type: "reminder_due",
+      title: "Vencimiento próximo",
+      body: "Renovación de la póliza de seguro (Vence en 3 días)",
+      link: "/panel/reminders",
+    });
+  });
 });
 
 describe("buildIncidentResolvedNotification", () => {

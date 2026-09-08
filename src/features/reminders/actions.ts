@@ -103,14 +103,15 @@ function zodIssuesToFieldErrors(error: z.ZodError): ReminderFieldErrors {
   return fieldErrors;
 }
 
-// buildingId siempre sale ya resuelto (el edificio elegido en el header, o
-// un <select> de edificios activos de la organización cuando la vista es
-// "todos los edificios" -- ver ReminderForm), nunca tipeado a mano; aun así
-// se valida acá igual que el resto del formulario (CLAUDE.md > Reglas de
-// seguridad). La FK compuesta (building_id, organization_id) ->
-// buildings(id, organization_id) (ver CLAUDE.md > Integridad entre
-// organizaciones) es la defensa real de base contra un buildingId de otra
-// organización -- no hace falta duplicar ese chequeo acá.
+// buildingId sale ya resuelto (el edificio elegido en el header, o un
+// <select> cuando la vista es "todos los edificios" -- ver ReminderForm),
+// nunca tipeado a mano. Puede ser un uuid de edificio O `null` (evento
+// "General", sin edificio -- una tarea de toda la organización). La FK
+// compuesta (building_id, organization_id) -> buildings(id, organization_id)
+// (ver CLAUDE.md > Integridad entre organizaciones) es la defensa real de
+// base contra un buildingId de otra organización; con `null`, MATCH SIMPLE
+// no la chequea, exactamente como en announcements. No hace falta duplicar
+// ese chequeo acá.
 export const createReminderAction = authorizedAction(
   async (
     context,
@@ -241,7 +242,13 @@ export const updateReminderAction = authorizedAction(
           .where(
             and(
               eq(reminders.id, id),
-              eq(reminders.buildingId, buildingId),
+              // Guarda null-safe: un evento "General" tiene building_id NULL
+              // y `eq(col, null)` nunca matchea en SQL. El id + la org ya
+              // identifican la fila; esto solo verifica que el payload sea
+              // internamente consistente.
+              buildingId === null
+                ? isNull(reminders.buildingId)
+                : eq(reminders.buildingId, buildingId),
               eq(reminders.organizationId, context.organization.id),
               isNull(reminders.deletedAt),
             ),
@@ -297,10 +304,12 @@ export type SimpleReminderActionResult = { ok: boolean; error?: string };
 export const softDeleteReminderAction = authorizedAction(
   async (
     context,
-    buildingId: string,
+    buildingId: string | null,
     reminderId: string,
   ): Promise<SimpleReminderActionResult> => {
-    const parsedBuildingId = z.uuid().safeParse(buildingId);
+    // `buildingId` nullable: un evento "General" no tiene edificio. `null`
+    // es válido; cualquier string que no sea un uuid, no.
+    const parsedBuildingId = z.uuid().nullable().safeParse(buildingId);
     const parsedReminderId = z.uuid().safeParse(reminderId);
     if (!parsedBuildingId.success || !parsedReminderId.success) {
       return { ok: false, error: "Evento inválido." };
@@ -312,7 +321,9 @@ export const softDeleteReminderAction = authorizedAction(
       .where(
         and(
           eq(reminders.id, parsedReminderId.data),
-          eq(reminders.buildingId, parsedBuildingId.data),
+          parsedBuildingId.data === null
+            ? isNull(reminders.buildingId)
+            : eq(reminders.buildingId, parsedBuildingId.data),
           eq(reminders.organizationId, context.organization.id),
           isNull(reminders.deletedAt),
         ),

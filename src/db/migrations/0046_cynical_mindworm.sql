@@ -1,0 +1,1 @@
+ALTER TABLE "reminders" ALTER COLUMN "building_id" DROP NOT NULL;

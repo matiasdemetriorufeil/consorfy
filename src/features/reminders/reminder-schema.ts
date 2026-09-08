@@ -209,9 +209,14 @@ export type ReminderClientFieldsInput = z.input<
 // cuando la vista es "todos los edificios" -- ver ReminderForm). `today` lo
 // inyecta la Server Action (nunca lo tipea la persona) para el tope
 // dinámico de `noticeDaysThresholds` -- ver noticeThresholdsWithinDueDate.
+//
+// `.nullable()`: `null` es la opción "General" (evento sin edificio, tarea
+// de toda la organización) -- misma forma que announcements. El campo
+// SIGUE exigiendo una elección explícita: el mensaje se dispara si llega
+// un string vacío (nada elegido en el <select>), no si llega `null`.
 export const createReminderFormSchema = reminderFieldsSchema
   .extend({
-    buildingId: z.uuid("Elegí un edificio."),
+    buildingId: z.uuid("Elegí un edificio, o 'General'.").nullable(),
     today: serverTodaySchema,
   })
   .refine(noticeThresholdsWithinDueDate, {
@@ -232,7 +237,10 @@ export type CreateReminderFormInput = z.input<typeof createReminderFormSchema>;
 export const updateReminderFormSchema = reminderFieldsSchema
   .extend({
     id: z.uuid(),
-    buildingId: z.uuid(),
+    // `.nullable()`: un evento "General" (sin edificio) también se edita. El
+    // edificio no se puede cambiar al editar (el <select> no aparece), así
+    // que esto solo revalida el valor que ya tenía el evento.
+    buildingId: z.uuid().nullable(),
     status: z.enum(REMINDER_STATUSES, { message: "Elegí un estado." }),
     today: serverTodaySchema,
   })

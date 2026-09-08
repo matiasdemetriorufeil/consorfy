@@ -6,9 +6,9 @@ import { countActiveTickets, sql } from "./helpers/db";
 import { removePendingAttachments } from "./helpers/storage";
 
 // --- Datos del seed (base de desarrollo) ---
-const TORRE_CENTRAL_TOKEN = "af6201f8-9be0-4258-9fa8-444476d821f9";
+const TORRE_CENTRAL_TOKEN = "e9813b06-d7f4-4b3b-ae9f-fcfff3843d8f";
 const TORRE_CENTRAL_WHATSAPP_DIGITS = "5493511234567";
-const OTRO_BUILDING_TOKEN = "b3338ad1-0512-4498-91b1-7db3885a31fb"; // Edificio Cabildo
+const OTRO_BUILDING_TOKEN = "71181d12-6cfa-4f73-84f4-0b6dbb477fd9"; // Edificio Cabildo
 const FIXTURE_PNG = path.resolve(
   process.cwd(),
   "e2e/fixtures/reclamo-foto.png",

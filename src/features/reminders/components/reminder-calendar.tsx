@@ -223,7 +223,7 @@ export function ReminderCalendar({
                       <div className="flex flex-wrap items-center gap-2">
                         {showBuildingColumn && (
                           <span className="text-ink-muted text-sm">
-                            {reminder.buildingName}
+                            {reminder.buildingName ?? "General"}
                           </span>
                         )}
                         <ReminderStatusBadge status={reminder.status} />

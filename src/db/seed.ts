@@ -1418,6 +1418,19 @@ async function main() {
         noticeDays: 10,
         status: "pending",
       },
+      {
+        // Evento "General": sin edificio (building_id NULL). Una tarea
+        // administrativa de toda la organización, no de un edificio puntual.
+        organizationId: organization.id,
+        buildingId: null,
+        title: "Vencimiento de la matrícula del administrador",
+        description:
+          "Renovar la matrícula profesional ante el registro público de administradores.",
+        dueDate: dueDateOffsetDays(20),
+        recurrence: "annual",
+        noticeDays: 30,
+        status: "pending",
+      },
     ])
     .returning({ id: schema.reminders.id });
 
@@ -1429,6 +1442,7 @@ async function main() {
     [7, 3, 0],
     [30, 7],
     [10],
+    [30, 7],
   ];
   await db.insert(schema.reminderNoticeThresholds).values(
     seededReminders.flatMap((reminder, index) =>
@@ -1439,7 +1453,7 @@ async function main() {
       })),
     ),
   );
-  console.log("recordatorios: 4");
+  console.log("recordatorios: 5 (uno General, sin edificio)");
 
   // ---------------------------------------------------------------------
   // 3 documentos (visibilidades: solo hay dos valores posibles en el enum,

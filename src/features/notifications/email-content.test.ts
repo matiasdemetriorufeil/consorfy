@@ -198,6 +198,29 @@ describe("buildDailySummaryEmail", () => {
     expect(result.html).toContain("[Próximo]");
     expect(result.html).toContain("Fumigación");
   });
+
+  it("evento General (buildingName null): la línea no muestra '(null)'", () => {
+    const result = buildDailySummaryEmail({
+      organizationName: "Rivadavia Administraciones",
+      dateLabel: "27 de agosto de 2026",
+      appUrl: "https://consorfy.com.ar",
+      newTickets: [],
+      urgentUnresolvedTickets: [],
+      overdueTickets: [],
+      remindersNeedingAttention: [
+        {
+          id: "55555555-5555-5555-5555-555555555555",
+          title: "Renovación de la póliza de seguro",
+          buildingName: null,
+          urgency: "upcoming",
+        },
+      ],
+    });
+
+    expect(result.html).toContain("Renovación de la póliza de seguro");
+    expect(result.html).not.toContain("(null)");
+    expect(result.html).not.toContain("Renovación de la póliza de seguro (");
+  });
 });
 
 describe("buildReminderThresholdsEmail", () => {
@@ -277,6 +300,28 @@ describe("buildReminderThresholdsEmail", () => {
     expect(result.html).toContain("aviso del mismo día");
     expect(result.html).not.toContain("aviso de 1 días antes");
     expect(result.html).not.toContain("aviso de 0 días antes");
+  });
+
+  it("evento General (buildingName null): la fila no muestra '(null)'", () => {
+    const result = buildReminderThresholdsEmail({
+      organizationName: "Rivadavia Administraciones",
+      dateLabel: "27 de agosto de 2026",
+      appUrl: "https://consorfy.com.ar",
+      thresholds: [
+        {
+          reminderTitle: "Renovación de la póliza de seguro",
+          buildingName: null,
+          noticeDays: 7,
+          dueDateLabel: "03/09/2026",
+        },
+      ],
+    });
+
+    expect(result.html).toContain("Renovación de la póliza de seguro");
+    expect(result.html).not.toContain("(null)");
+    expect(result.html).toContain(
+      "Renovación de la póliza de seguro</strong> -- vence el 03/09/2026",
+    );
   });
 
   it("con un solo umbral usa el intro en singular", () => {

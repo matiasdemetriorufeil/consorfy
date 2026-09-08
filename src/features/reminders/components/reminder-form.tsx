@@ -54,6 +54,12 @@ const RHF_MANAGED_FIELDS = new Set<keyof ReminderClientFieldsInput>([
   "dueDate",
 ]);
 
+// Sentinela para la opción "General" (evento sin edificio) del <Select> --
+// Radix no admite `value=""`, así que se usa un string reservado que se
+// traduce a `buildingId: null` al armar el payload. Mismo mecanismo que
+// `ALL_BUILDINGS_VALUE` en announcement-segment-form.tsx.
+const GENERAL_BUILDING_VALUE = "__general__";
+
 // La lista de umbrales se maneja como estado propio (strings, lo que
 // entrega un <input type="number"> vacío o a medio tipear), no en
 // react-hook-form -- mismo motivo que `buildingId`/`status`. Se convierten
@@ -297,7 +303,16 @@ export function ReminderForm({
               color,
               noticeDaysThresholds,
             }
-          : { ...data, buildingId, color, noticeDaysThresholds };
+          : {
+              ...data,
+              // La sentinela "General" se traduce a `null`; un uuid o el
+              // string vacío (nada elegido) viajan tal cual -- el servidor
+              // rechaza el vacío con un mensaje claro.
+              buildingId:
+                buildingId === GENERAL_BUILDING_VALUE ? null : buildingId,
+              color,
+              noticeDaysThresholds,
+            };
         startTransition(() => dispatch(payload));
       })}
     >
@@ -309,10 +324,12 @@ export function ReminderForm({
         )}
 
         {/* Sin edificio fijo (vista "todos los edificios", solo al crear):
-            el formulario tiene que pedirlo, un recordatorio siempre
-            pertenece a UN edificio puntual (reminders.building_id NOT
-            NULL). En edición, o con un edificio elegido en el header, esto
-            no se muestra -- el contexto ya lo deja claro. */}
+            el formulario tiene que pedir a quién pertenece el evento -- un
+            edificio puntual, o "General" (una tarea de toda la
+            organización, sin edificio: reminders.building_id NULL). En
+            edición, o con un edificio elegido en el header, esto no se
+            muestra -- el contexto ya lo deja claro, y el edificio de un
+            evento no se cambia después de creado. */}
         {mode === "create" && !lockedBuildingId && (
           <Field data-invalid={!!buildingError}>
             <FieldLabel htmlFor="reminder-building">Edificio</FieldLabel>
@@ -329,6 +346,7 @@ export function ReminderForm({
                 <SelectValue placeholder="Elegí un edificio" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value={GENERAL_BUILDING_VALUE}>General</SelectItem>
                 {buildingOptions.map((building) => (
                   <SelectItem key={building.id} value={building.id}>
                     {building.name}

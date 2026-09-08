@@ -57,7 +57,13 @@ export const reminders = pgTable(
     organizationId: uuid("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "restrict" }),
-    buildingId: uuid("building_id").notNull(),
+    // Nullable: un evento "General" -- una tarea administrativa de TODA la
+    // organización, no de un edificio puntual (VTV de la flota, vencimiento
+    // de un seguro, etc.) -- tiene sentido en este producto. Mismo criterio
+    // y misma forma que `announcements.building_id` (ver el comentario largo
+    // ahí). La FK compuesta de abajo no cambia: MATCH SIMPLE (default de
+    // Postgres) no exige match cuando `building_id` es NULL.
+    buildingId: uuid("building_id"),
     // Recurrencia = fila NUEVA por ocurrencia al completar la actual, NO
     // recalcular due_date en la misma fila. El pedido explícito de poder
     // "ver el historial de fumigaciones pasadas" no se puede cumplir

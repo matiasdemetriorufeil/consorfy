@@ -12,8 +12,11 @@ import type {
 
 export type ReminderListRow = {
   id: string;
-  buildingId: string;
-  buildingName: string;
+  // `null` = evento "General" (sin edificio, tarea de toda la organización).
+  // Mismo criterio que announcements. Con un edificio elegido en el header
+  // estos no aparecen -- el filtro de abajo ya los excluye.
+  buildingId: string | null;
+  buildingName: string | null;
   title: string;
   description: string | null;
   dueDate: string;
@@ -44,10 +47,11 @@ export type ReminderListRow = {
 // Acceso a datos): `organizationId` primero y obligatorio. `buildingId`
 // segundo, OPCIONAL -- `null` es "todos los edificios" (vista agregada
 // legítima, ver CLAUDE.md > Selector de edificio activo), no un valor
-// especial que haya que guardar. `buildingName` siempre viene en el SELECT
-// (INNER JOIN barato, `reminders.building_id` es NOT NULL) para que la UI
-// decida sin una consulta aparte si mostrar la columna Edificio -- mismo
-// criterio que `showBuildingColumn` en la bandeja de reclamos.
+// especial que haya que guardar. `buildingName` viene por LEFT JOIN (no
+// INNER): un evento "General" tiene `reminders.building_id` NULL a
+// propósito y tiene que seguir apareciendo, no desaparecer por el JOIN --
+// mismo criterio y mismo motivo que getAnnouncementsList. Sale `null` para
+// esos; la UI muestra "General".
 //
 // `statuses` opcional: sin filtro (`null`), trae TODOS los estados -- la
 // página lo usa para distinguir "no hay ningún recordatorio en este
@@ -88,7 +92,13 @@ export async function getReminderList(
       color: reminders.color,
     })
     .from(reminders)
-    .innerJoin(buildings, eq(buildings.id, reminders.buildingId))
+    .leftJoin(
+      buildings,
+      and(
+        eq(buildings.id, reminders.buildingId),
+        eq(buildings.organizationId, reminders.organizationId),
+      ),
+    )
     .where(
       and(
         eq(reminders.organizationId, organizationId),

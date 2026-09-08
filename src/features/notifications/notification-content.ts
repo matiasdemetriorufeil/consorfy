@@ -128,14 +128,19 @@ export function buildTicketOverdueNotification(input: {
 // `/panel/reminders`, la pantalla donde vive, no a un recurso que no
 // existe.
 export function buildReminderDueNotification(input: {
-  buildingName: string;
+  // `null` = evento "General" (sin edificio): el título omite el " en
+  // {edificio}" en vez de decir "en null". El cuerpo ya identifica de qué
+  // evento se trata.
+  buildingName: string | null;
   reminderTitle: string;
   dueDate: string;
   today: string;
 }): NotificationContent {
   return {
     type: "reminder_due",
-    title: `Vencimiento próximo en ${input.buildingName}`,
+    title: input.buildingName
+      ? `Vencimiento próximo en ${input.buildingName}`
+      : "Vencimiento próximo",
     body: `${input.reminderTitle} (${describeReminderDueDate(input.dueDate, input.today)})`,
     link: "/panel/reminders",
   };

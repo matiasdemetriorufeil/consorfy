@@ -15,7 +15,9 @@ export type MarkedNoticeThreshold = {
   thresholdId: string;
   reminderId: string;
   reminderTitle: string;
-  buildingName: string;
+  // `null` = evento "General" (sin edificio). El mail lo redacta sin la
+  // parte "(edificio)".
+  buildingName: string | null;
   noticeDays: number;
   dueDate: string;
 };
@@ -70,7 +72,16 @@ export async function sweepReminderNoticeThresholds(
           eq(reminders.organizationId, reminderNoticeThresholds.organizationId),
         ),
       )
-      .innerJoin(buildings, eq(buildings.id, reminders.buildingId))
+      // LEFT JOIN (no INNER): un evento "General" tiene building_id NULL y
+      // su umbral tiene que barrerse igual -- si no, no sale el mail
+      // dedicado. `buildings.name` sale NULL para esos.
+      .leftJoin(
+        buildings,
+        and(
+          eq(buildings.id, reminders.buildingId),
+          eq(buildings.organizationId, reminders.organizationId),
+        ),
+      )
       .where(
         and(
           eq(reminderNoticeThresholds.organizationId, organizationId),

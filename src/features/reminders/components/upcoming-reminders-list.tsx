@@ -60,7 +60,7 @@ export function UpcomingRemindersList({
               <p className="text-ink font-medium">{reminder.title}</p>
               {showBuildingColumn && (
                 <p className="text-ink-muted text-sm">
-                  {reminder.buildingName}
+                  {reminder.buildingName ?? "General"}
                 </p>
               )}
             </div>

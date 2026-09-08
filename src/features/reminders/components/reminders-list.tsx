@@ -146,7 +146,7 @@ export function RemindersList({
                   {reminder.title}
                 </TableCell>
                 {showBuildingColumn && (
-                  <TableCell>{reminder.buildingName}</TableCell>
+                  <TableCell>{reminder.buildingName ?? "General"}</TableCell>
                 )}
                 <TableCell>{formatDueDate(reminder.dueDate)}</TableCell>
                 <TableCell>
