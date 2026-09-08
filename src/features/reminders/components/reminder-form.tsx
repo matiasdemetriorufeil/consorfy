@@ -44,21 +44,7 @@ import {
   type ReminderStatusValue,
 } from "../reminder-schema";
 import { daysBetween } from "../reminder-urgency";
-
-// Relleno sólido de cada color de la paleta -- clases literales para que el
-// scanner de Tailwind v4 las genere (mismo motivo que PRIORITY_CLASS y
-// compañía). Los hex viven en globals.css (`--evento-*`); este conjunto es
-// aparte del de urgencia (`bg-urgente`/`bg-alta`/...).
-const REMINDER_COLOR_SWATCH: Record<ReminderColorValue, string> = {
-  pizarra: "bg-evento-pizarra",
-  rojo: "bg-evento-rojo",
-  naranja: "bg-evento-naranja",
-  ambar: "bg-evento-ambar",
-  verde: "bg-evento-verde",
-  azul: "bg-evento-azul",
-  violeta: "bg-evento-violeta",
-  rosa: "bg-evento-rosa",
-};
+import { REMINDER_COLOR_BG } from "./reminder-color";
 
 // Campos que sí viven en react-hook-form -- ver el comentario de más abajo
 // sobre por qué `buildingId`/`status`/`noticeDaysThresholds` quedan afuera.
@@ -418,7 +404,7 @@ export function ReminderForm({
                     "border-border/60 flex size-8 items-center justify-center rounded-full border transition outline-none",
                     "focus-visible:ring-ring focus-visible:ring-offset-background focus-visible:ring-2 focus-visible:ring-offset-2",
                     "disabled:opacity-50",
-                    REMINDER_COLOR_SWATCH[value],
+                    REMINDER_COLOR_BG[value],
                     selected &&
                       "ring-ring ring-offset-background ring-2 ring-offset-2",
                   )}

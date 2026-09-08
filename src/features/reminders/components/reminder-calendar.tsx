@@ -1,19 +1,24 @@
 "use client";
 
 import { es } from "date-fns/locale";
-import { useMemo, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentProps,
+} from "react";
+import { type DayButton } from "react-day-picker";
 
 import { Calendar } from "@/components/ui/calendar";
+import type { ActiveBuildingOption } from "@/features/buildings/queries";
+import { cn } from "@/lib/utils";
 
 import { formatDueDate } from "../format-due-date";
 import type { ReminderListRow } from "../queries";
-import { getReminderUrgency, type ReminderUrgency } from "../reminder-urgency";
+import { ReminderColorDot } from "./reminder-color";
+import { ReminderFormDialog } from "./reminder-form-dialog";
 import { ReminderStatusBadge } from "./reminder-status-badge";
-import {
-  ReminderUrgencyBadge,
-  ReminderUrgencyDot,
-  URGENCY_LABEL,
-} from "./reminder-urgency-badge";
 
 // "YYYY-MM-DD" -> Date LOCAL (constructor de 3 argumentos, sin UTC) --
 // a propósito, DISTINTO del resto del feature (`daysBetween`/`formatDueDate`
@@ -40,36 +45,112 @@ function localDateToDateKey(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-// Orden de severidad para quedarse con la PEOR urgencia del día, cuando hay
-// más de un recordatorio en la misma fecha.
-const URGENCY_SEVERITY: Record<ReminderUrgency, number> = {
-  overdue: 2,
-  upcoming: 1,
-  ok: 0,
-};
+// Cuántos puntos de color entran cómodos en una celda del calendario grande
+// antes de resumir el resto como "+N". No hay un precedente exacto de
+// "indicador de desborde" compacto en el proyecto (lo más cercano es el
+// "N más" en texto de announcement-segment-form): se elige "+N" por ser lo
+// más corto para una celda de calendario.
+const MAX_DOTS_PER_DAY = 4;
 
-// Vista de calendario mensual (paso 9.2, punto 1). Client Component --
-// necesita estado (mes visible, día elegido) que no puede vivir en un
-// Server Component. Recibe TODOS los recordatorios del alcance ya
-// resueltos por page.tsx (cualquier estado, no solo los activos -- ver
-// CLAUDE.md > Vistas de calendario y próximos vencimientos sobre por qué
-// acá sí se muestran done/dismissed, a diferencia de "Próximos
-// vencimientos") y arma la grilla/agrupación en memoria: mismo criterio de
-// "tabla chica, sin round-trip por mes" ya documentado para
-// getReminderList (paso 9.1) -- un mes nuevo no pide nada al servidor, solo
-// cambia qué parte de los datos ya cargados se muestra.
+// Celda de día del calendario. Reemplaza al DayButton por defecto de
+// components/ui/calendar.tsx para meterle, además del número, un punto por
+// cada evento de ese día con su `reminders.color`. YA NO muestra urgencia
+// (vencido/próximo/al día): ese semáforo vive solo en la lista y en
+// "Próximos vencimientos".
+function CalendarDay({
+  className,
+  day,
+  modifiers,
+  remindersByDay,
+  children,
+  ...props
+}: ComponentProps<typeof DayButton> & {
+  remindersByDay: Map<string, ReminderListRow[]>;
+}) {
+  const ref = useRef<HTMLButtonElement>(null);
+  // Mismo manejo de foco que el DayButton por defecto -- necesario para que
+  // la navegación con flechas del teclado siga moviendo el foco de celda.
+  useEffect(() => {
+    if (modifiers.focused) ref.current?.focus();
+  }, [modifiers.focused]);
+
+  const dayReminders = remindersByDay.get(localDateToDateKey(day.date)) ?? [];
+  const visible = dayReminders.slice(0, MAX_DOTS_PER_DAY);
+  const overflow = dayReminders.length - visible.length;
+  const selectedSingle =
+    modifiers.selected &&
+    !modifiers.range_start &&
+    !modifiers.range_end &&
+    !modifiers.range_middle;
+
+  return (
+    <button
+      ref={ref}
+      type="button"
+      data-selected-single={selectedSingle || undefined}
+      className={cn(
+        "relative flex h-full w-full flex-col items-center justify-start gap-1 rounded-(--cell-radius) p-1 text-sm leading-none outline-none",
+        "hover:bg-accent focus-visible:ring-ring focus-visible:z-10 focus-visible:ring-2",
+        "data-[selected-single=true]:bg-primary data-[selected-single=true]:text-primary-foreground",
+        className,
+      )}
+      {...props}
+    >
+      <span className={cn("tabular-nums", modifiers.today && "font-semibold")}>
+        {children}
+      </span>
+      {dayReminders.length > 0 && (
+        <span className="flex max-w-full flex-wrap items-center justify-center gap-0.5">
+          {visible.map((reminder) => (
+            <ReminderColorDot key={reminder.id} color={reminder.color} />
+          ))}
+          {overflow > 0 && (
+            <span className="text-ink-muted text-[0.625rem] leading-none">
+              +{overflow}
+            </span>
+          )}
+        </span>
+      )}
+    </button>
+  );
+}
+
+// Vista de calendario mensual (paso 9.2, punto 1; agrandada y con color por
+// evento en el paso 2). Client Component -- necesita estado (mes visible,
+// día elegido, diálogo de edición abierto) que no puede vivir en un Server
+// Component. Recibe TODOS los recordatorios del alcance ya resueltos por
+// page.tsx (cualquier estado, no solo los activos -- ver CLAUDE.md > Vistas
+// de calendario y próximos vencimientos) y arma la agrupación en memoria:
+// un mes nuevo no pide nada al servidor, solo cambia qué parte de los datos
+// ya cargados se muestra.
+//
+// Layout (paso 2): el calendario ocupa TODO el ancho arriba y el panel de
+// detalle del día queda abajo (antes era lado a lado con un calendario
+// chico) -- así cada celda tiene lugar para varios puntos de color.
 export function ReminderCalendar({
   reminders,
   today,
   showBuildingColumn,
+  buildingOptions,
+  lockedBuildingId,
 }: {
   reminders: ReminderListRow[];
   today: string;
   showBuildingColumn: boolean;
+  buildingOptions: ActiveBuildingOption[];
+  lockedBuildingId: string | null;
 }) {
   const todayDate = useMemo(() => dateKeyToLocalDate(today), [today]);
   const [month, setMonth] = useState(todayDate);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(todayDate);
+  // Evento cuyo diálogo de edición está abierto -- mismo mecanismo exacto
+  // que RemindersList (estado que guarda la fila, `open` derivado,
+  // `onOpenChange` que lo limpia). Guardar un cambio revalida
+  // `/panel/reminders` (revalidateReminderPaths en actions.ts) y el
+  // calendario se repinta con los datos nuevos sin recargar.
+  const [editReminder, setEditReminder] = useState<ReminderListRow | undefined>(
+    undefined,
+  );
 
   const remindersByDay = useMemo(() => {
     const map = new Map<string, ReminderListRow[]>();
@@ -81,31 +162,17 @@ export function ReminderCalendar({
     return map;
   }, [reminders]);
 
-  // Peor urgencia por día, y las tres listas de fechas que necesita el
-  // prop `modifiers` de DayPicker (un array de Date por modificador, ver
-  // el comentario de la celda del día más abajo).
-  const { overdueDates, upcomingDates, okDates } = useMemo(() => {
-    const overdue: Date[] = [];
-    const upcoming: Date[] = [];
-    const ok: Date[] = [];
-    for (const [dayKey, dayReminders] of remindersByDay) {
-      let worst: ReminderUrgency = "ok";
-      for (const reminder of dayReminders) {
-        const urgency = getReminderUrgency(dayKey, reminder.noticeDays, today);
-        if (URGENCY_SEVERITY[urgency] > URGENCY_SEVERITY[worst]) {
-          worst = urgency;
-        }
-      }
-      const date = dateKeyToLocalDate(dayKey);
-      (worst === "overdue"
-        ? overdue
-        : worst === "upcoming"
-          ? upcoming
-          : ok
-      ).push(date);
-    }
-    return { overdueDates: overdue, upcomingDates: upcoming, okDates: ok };
-  }, [remindersByDay, today]);
+  // `components` estable mientras no cambien los datos -- si su identidad
+  // cambiara en cada render, react-day-picker remontaría todas las celdas
+  // (y se perdería el foco) al navegar de mes o elegir un día.
+  const dayComponents = useMemo(
+    () => ({
+      DayButton: (props: ComponentProps<typeof DayButton>) => (
+        <CalendarDay {...props} remindersByDay={remindersByDay} />
+      ),
+    }),
+    [remindersByDay],
+  );
 
   const selectedDayKey = selectedDate ? localDateToDateKey(selectedDate) : null;
   const selectedDayReminders = selectedDayKey
@@ -113,45 +180,24 @@ export function ReminderCalendar({
     : [];
 
   return (
-    <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
-      <div className="flex flex-col gap-3">
-        <Calendar
-          mode="single"
-          month={month}
-          onMonthChange={setMonth}
-          selected={selectedDate}
-          onSelect={setSelectedDate}
-          today={todayDate}
-          locale={es}
-          modifiers={{
-            reminderOverdue: overdueDates,
-            reminderUpcoming: upcomingDates,
-            reminderOk: okDates,
-          }}
-          modifiersClassNames={{
-            reminderOverdue:
-              "after:absolute after:bottom-1 after:left-1/2 after:size-1.5 after:-translate-x-1/2 after:rounded-full after:bg-urgente",
-            reminderUpcoming:
-              "after:absolute after:bottom-1 after:left-1/2 after:size-1.5 after:-translate-x-1/2 after:rounded-full after:bg-alta",
-            reminderOk:
-              "after:absolute after:bottom-1 after:left-1/2 after:size-1.5 after:-translate-x-1/2 after:rounded-full after:bg-resuelto",
-          }}
-          className="border-border rounded-lg border"
-        />
-        <ul className="text-ink-muted flex flex-wrap gap-x-4 gap-y-1 text-xs">
-          <li className="flex items-center gap-1.5">
-            <ReminderUrgencyDot urgency="overdue" /> {URGENCY_LABEL.overdue}
-          </li>
-          <li className="flex items-center gap-1.5">
-            <ReminderUrgencyDot urgency="upcoming" /> {URGENCY_LABEL.upcoming}
-          </li>
-          <li className="flex items-center gap-1.5">
-            <ReminderUrgencyDot urgency="ok" /> {URGENCY_LABEL.ok}
-          </li>
-        </ul>
-      </div>
+    <div className="flex flex-col gap-6">
+      <Calendar
+        mode="single"
+        month={month}
+        onMonthChange={setMonth}
+        selected={selectedDate}
+        onSelect={setSelectedDate}
+        today={todayDate}
+        locale={es}
+        components={dayComponents}
+        className="border-border rounded-lg border p-3 [--cell-size:--spacing(10)]"
+        classNames={{
+          root: "w-full",
+          day: "relative h-full w-full min-h-14 rounded-(--cell-radius) p-0 text-center select-none sm:min-h-20 lg:min-h-24",
+        }}
+      />
 
-      <div className="border-border min-w-0 flex-1 rounded-lg border p-4">
+      <div className="border-border rounded-lg border p-4">
         {selectedDayKey ? (
           <>
             <h3 className="text-ink mb-3 font-medium">
@@ -160,33 +206,34 @@ export function ReminderCalendar({
             {selectedDayReminders.length === 0 ? (
               <p className="text-ink-muted text-sm">Sin eventos este día.</p>
             ) : (
-              <ul className="flex flex-col gap-3">
+              <ul className="flex flex-col gap-2">
                 {selectedDayReminders.map((reminder) => (
-                  <li
-                    key={reminder.id}
-                    className="border-border flex flex-col gap-1 border-b pb-3 last:border-0 last:pb-0"
-                  >
-                    <p className="text-ink font-medium">{reminder.title}</p>
-                    <div className="flex flex-wrap items-center gap-2">
-                      {showBuildingColumn && (
-                        <span className="text-ink-muted text-sm">
-                          {reminder.buildingName}
+                  <li key={reminder.id}>
+                    <button
+                      type="button"
+                      onClick={() => setEditReminder(reminder)}
+                      className="border-border hover:bg-accent focus-visible:ring-ring flex w-full flex-col gap-1 rounded-lg border p-3 text-left outline-none focus-visible:ring-2"
+                    >
+                      <div className="flex items-center gap-2">
+                        <ReminderColorDot color={reminder.color} />
+                        <span className="text-ink font-medium">
+                          {reminder.title}
                         </span>
-                      )}
-                      <ReminderStatusBadge status={reminder.status} />
-                      <ReminderUrgencyBadge
-                        urgency={getReminderUrgency(
-                          reminder.dueDate,
-                          reminder.noticeDays,
-                          today,
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {showBuildingColumn && (
+                          <span className="text-ink-muted text-sm">
+                            {reminder.buildingName}
+                          </span>
                         )}
-                      />
-                    </div>
-                    {reminder.description && (
-                      <p className="text-ink-muted text-sm">
-                        {reminder.description}
-                      </p>
-                    )}
+                        <ReminderStatusBadge status={reminder.status} />
+                      </div>
+                      {reminder.description && (
+                        <p className="text-ink-muted text-sm">
+                          {reminder.description}
+                        </p>
+                      )}
+                    </button>
                   </li>
                 ))}
               </ul>
@@ -198,6 +245,18 @@ export function ReminderCalendar({
           </p>
         )}
       </div>
+
+      <ReminderFormDialog
+        open={editReminder !== undefined}
+        onOpenChange={(open) => {
+          if (!open) {
+            setEditReminder(undefined);
+          }
+        }}
+        buildingOptions={buildingOptions}
+        lockedBuildingId={lockedBuildingId}
+        reminder={editReminder}
+      />
     </div>
   );
 }

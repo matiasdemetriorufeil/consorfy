@@ -24,9 +24,11 @@ import type { ActiveBuildingOption } from "@/features/buildings/queries";
 import { formatDueDate } from "../format-due-date";
 import type { ReminderListRow } from "../queries";
 import { buildReminderListHref } from "../reminder-list-schema";
+import { getReminderUrgency } from "../reminder-urgency";
 import { DeleteReminderDialog } from "./delete-reminder-dialog";
 import { ReminderFormDialog } from "./reminder-form-dialog";
 import { ReminderStatusBadge } from "./reminder-status-badge";
+import { ReminderUrgencyBadge } from "./reminder-urgency-badge";
 
 type DialogState =
   | { type: "closed" }
@@ -58,12 +60,17 @@ export function RemindersList({
   buildingOptions,
   lockedBuildingId,
   showBuildingColumn,
+  today,
 }: {
   reminders: ReminderListRow[];
   totalCount: number;
   buildingOptions: ActiveBuildingOption[];
   lockedBuildingId: string | null;
   showBuildingColumn: boolean;
+  // Fecha civil de HOY en la zona de la organización (page.tsx) -- para el
+  // semáforo de urgencia, que a partir del paso 2 vive SOLO en esta lista y
+  // en "Próximos vencimientos" (ya no en el calendario).
+  today: string;
 }) {
   const [dialog, setDialog] = useState<DialogState>({ type: "closed" });
 
@@ -124,6 +131,7 @@ export function RemindersList({
               <TableHead>Título</TableHead>
               {showBuildingColumn && <TableHead>Edificio</TableHead>}
               <TableHead>Vencimiento</TableHead>
+              <TableHead>Urgencia</TableHead>
               <TableHead>Anticipación</TableHead>
               <TableHead>Estado</TableHead>
               <TableHead className="w-10">
@@ -141,6 +149,15 @@ export function RemindersList({
                   <TableCell>{reminder.buildingName}</TableCell>
                 )}
                 <TableCell>{formatDueDate(reminder.dueDate)}</TableCell>
+                <TableCell>
+                  <ReminderUrgencyBadge
+                    urgency={getReminderUrgency(
+                      reminder.dueDate,
+                      reminder.noticeDays,
+                      today,
+                    )}
+                  />
+                </TableCell>
                 <TableCell>
                   {formatNoticeThresholds(reminder.noticeDaysThresholds)}
                 </TableCell>

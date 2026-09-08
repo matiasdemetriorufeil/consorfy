@@ -4,9 +4,15 @@ import { cn } from "@/lib/utils";
 import type { ReminderUrgency } from "../reminder-urgency";
 
 // Mismo criterio que ReminderStatusBadge/StatusBadge (paso 9.1/6.1) -- un
-// mapa de label y un mapa de color por nivel, reusando los mismos tokens
-// semánticos. Ver CLAUDE.md > Semáforo de vencimientos para los umbrales
-// que definen cada nivel.
+// mapa de label y un mapa de color por nivel. Ver CLAUDE.md > Semáforo de
+// vencimientos para los umbrales que definen cada nivel.
+//
+// El semáforo vive SOLO acá (lista + "Próximos vencimientos"); el calendario
+// ya no muestra urgencia. Los colores salen de los tokens `--urgencia-*`
+// (globals.css), un set aislado: "por vencer" en AMARILLO
+// (`--urgencia-amarillo`, token nuevo -- antes era el naranja `--alta`, que
+// comparten prioridad de reclamos y estados de comunicados y no se toca),
+// "al día" en VERDE, "vencido" en ROJO (el más grave, se mantiene distinto).
 export const URGENCY_LABEL: Record<ReminderUrgency, string> = {
   overdue: "Vencido",
   upcoming: "Próximo",
@@ -14,9 +20,9 @@ export const URGENCY_LABEL: Record<ReminderUrgency, string> = {
 };
 
 const URGENCY_CLASS: Record<ReminderUrgency, string> = {
-  overdue: "bg-urgente/10 text-urgente",
-  upcoming: "bg-alta/10 text-alta",
-  ok: "bg-resuelto/10 text-resuelto",
+  overdue: "bg-urgencia-rojo/10 text-urgencia-rojo",
+  upcoming: "bg-urgencia-amarillo/10 text-urgencia-amarillo",
+  ok: "bg-urgencia-verde/10 text-urgencia-verde",
 };
 
 export function ReminderUrgencyBadge({
@@ -37,28 +43,5 @@ export function ReminderUrgencyBadge({
     >
       {URGENCY_LABEL[urgency]}
     </Badge>
-  );
-}
-
-// Punto sólido de color (sin texto) -- para marcar días del calendario, más
-// compacto que un Badge dentro de una celda de `--cell-size` chica.
-export function ReminderUrgencyDot({
-  urgency,
-  className,
-}: {
-  urgency: ReminderUrgency;
-  className?: string;
-}) {
-  const DOT_CLASS: Record<ReminderUrgency, string> = {
-    overdue: "bg-urgente",
-    upcoming: "bg-alta",
-    ok: "bg-resuelto",
-  };
-
-  return (
-    <span
-      aria-hidden="true"
-      className={cn("size-1.5 rounded-full", DOT_CLASS[urgency], className)}
-    />
   );
 }

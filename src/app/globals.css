@@ -63,6 +63,18 @@
   --color-baja: var(--baja);
   --color-resuelto: var(--resuelto);
 
+  /* Semáforo de URGENCIA de eventos (vencido / por vencer / al día). Vive
+     SOLO en la lista y en "Próximos vencimientos" -- el calendario ya no lo
+     muestra. Conjunto propio con prefijo `--urgencia-*`, aparte de los
+     semánticos de arriba: `--urgente`/`--alta`/`--resuelto` los comparten
+     prioridad de reclamos, estados de comunicados, quota de storage y
+     acentos de notificaciones -- ajustar el amarillo de "por vencer" no
+     puede arrastrar ninguno de esos. Mismo criterio de aislamiento que
+     `--evento-*`. */
+  --color-urgencia-rojo: var(--urgencia-rojo);
+  --color-urgencia-amarillo: var(--urgencia-amarillo);
+  --color-urgencia-verde: var(--urgencia-verde);
+
   /* Colores de EVENTOS (recordatorios): decorativos/organizativos, los
      elige la persona por evento. Conjunto TOTALMENTE aparte de los
      semánticos de arriba -- nombres propios con prefijo `--evento-*` para
@@ -134,6 +146,19 @@
   --media: #175cd3;
   --baja: #5b6169;
   --resuelto: #067647;
+
+  /* Semáforo de urgencia de eventos -- ver el bloque `--color-urgencia-*`
+     en @theme inline. Set propio, aislado de `--urgente`/`--alta`/
+     `--resuelto` (que comparten otras pantallas). Rojo y verde repiten el
+     valor de `--urgente`/`--resuelto` a propósito -- mismo color, token
+     independiente, para poder moverlos por separado más adelante.
+     `--urgencia-amarillo` (#a16207, oro oscuro) es NUEVO: no existía ningún
+     amarillo de urgencia; elegido para que `text-urgencia-amarillo` sobre
+     `bg-urgencia-amarillo/10` pase 4.5:1 (WCAG 1.4.3, mismo criterio que
+     `--alta`) y se distinga a ojo del naranja `--alta` (#ae4408). */
+  --urgencia-rojo: #b42318;
+  --urgencia-amarillo: #a16207;
+  --urgencia-verde: #067647;
 
   /* Colores de EVENTOS -- ver el bloque `--color-evento-*` en @theme inline.
      Puramente decorativos: NO comparten ningún valor con los semánticos de

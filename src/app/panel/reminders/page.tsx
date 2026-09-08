@@ -125,6 +125,7 @@ export default async function RemindersPage({
             buildingOptions={buildings}
             lockedBuildingId={buildingId}
             showBuildingColumn={showBuildingColumn}
+            today={today}
           />
         </>
       )}
@@ -142,6 +143,8 @@ export default async function RemindersPage({
           reminders={allReminders}
           today={today}
           showBuildingColumn={showBuildingColumn}
+          buildingOptions={buildings}
+          lockedBuildingId={buildingId}
         />
       )}
     </div>
