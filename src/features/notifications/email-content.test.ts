@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildDailySummaryEmail,
+  buildReminderThresholdsEmail,
   buildUrgentTicketAlertEmail,
 } from "./email-content";
 
@@ -196,5 +197,104 @@ describe("buildDailySummaryEmail", () => {
     expect(result.html).toContain("Service del ascensor");
     expect(result.html).toContain("[Próximo]");
     expect(result.html).toContain("Fumigación");
+  });
+});
+
+describe("buildReminderThresholdsEmail", () => {
+  it("arma subject con organización y fecha", () => {
+    const result = buildReminderThresholdsEmail({
+      organizationName: "Rivadavia Administraciones",
+      dateLabel: "27 de agosto de 2026",
+      appUrl: "https://consorfy.com.ar",
+      thresholds: [
+        {
+          reminderTitle: "Fumigación trimestral",
+          buildingName: "Los Álamos",
+          noticeDays: 7,
+          dueDateLabel: "03/09/2026",
+        },
+      ],
+    });
+
+    expect(result.subject).toBe(
+      "Avisos de recordatorios de Rivadavia Administraciones -- 27 de agosto de 2026",
+    );
+  });
+
+  it("junta varios umbrales (de recordatorios distintos) en un solo mail", () => {
+    const result = buildReminderThresholdsEmail({
+      organizationName: "Rivadavia Administraciones",
+      dateLabel: "27 de agosto de 2026",
+      appUrl: "https://consorfy.com.ar",
+      thresholds: [
+        {
+          reminderTitle: "Fumigación trimestral",
+          buildingName: "Los Álamos",
+          noticeDays: 7,
+          dueDateLabel: "03/09/2026",
+        },
+        {
+          reminderTitle: "Service anual de ascensores",
+          buildingName: "Torre Central",
+          noticeDays: 3,
+          dueDateLabel: "30/08/2026",
+        },
+      ],
+    });
+
+    expect(result.html).toContain("2 avisos de recordatorios entraron hoy");
+    expect(result.html).toContain("Fumigación trimestral");
+    expect(result.html).toContain("Los Álamos");
+    expect(result.html).toContain("aviso de 7 días antes");
+    expect(result.html).toContain("Service anual de ascensores");
+    expect(result.html).toContain("Torre Central");
+    expect(result.html).toContain("aviso de 3 días antes");
+    expect(result.html).toContain("https://consorfy.com.ar/panel/reminders");
+  });
+
+  it("usa singular y 'mismo día' para los umbrales de 1 y 0 días", () => {
+    const result = buildReminderThresholdsEmail({
+      organizationName: "Rivadavia Administraciones",
+      dateLabel: "27 de agosto de 2026",
+      appUrl: "https://consorfy.com.ar",
+      thresholds: [
+        {
+          reminderTitle: "Recarga de matafuegos",
+          buildingName: "Torre Central",
+          noticeDays: 1,
+          dueDateLabel: "28/08/2026",
+        },
+        {
+          reminderTitle: "Limpieza de tanque",
+          buildingName: "Edificio Cabildo",
+          noticeDays: 0,
+          dueDateLabel: "27/08/2026",
+        },
+      ],
+    });
+
+    expect(result.html).toContain("aviso de 1 día antes");
+    expect(result.html).toContain("aviso del mismo día");
+    expect(result.html).not.toContain("aviso de 1 días antes");
+    expect(result.html).not.toContain("aviso de 0 días antes");
+  });
+
+  it("con un solo umbral usa el intro en singular", () => {
+    const result = buildReminderThresholdsEmail({
+      organizationName: "Rivadavia Administraciones",
+      dateLabel: "27 de agosto de 2026",
+      appUrl: "https://consorfy.com.ar",
+      thresholds: [
+        {
+          reminderTitle: "Fumigación trimestral",
+          buildingName: "Los Álamos",
+          noticeDays: 7,
+          dueDateLabel: "03/09/2026",
+        },
+      ],
+    });
+
+    expect(result.html).toContain("Un recordatorio entró hoy en su plazo");
+    expect(result.html).not.toContain("avisos de recordatorios entraron");
   });
 });

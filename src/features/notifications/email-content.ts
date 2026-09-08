@@ -208,3 +208,70 @@ export function buildDailySummaryEmail(input: {
 
   return { subject, html };
 }
+
+// Aviso DEDICADO por umbral de recordatorio (paso 3 de "múltiples umbrales
+// de aviso") -- función de CONTENIDO solamente, misma separación
+// "qué dice" / "cuándo se manda" que el resto de este archivo.
+//
+// Un solo mail junta TODOS los umbrales que entraron hoy en su plazo en
+// una organización (`daysBetween(today, due_date) <= notice_days`), sean
+// de uno o de varios recordatorios distintos. Mismo layout/tono/paleta que
+// `buildDailySummaryEmail` (para que se reconozcan como del mismo
+// sistema), pero ASUNTO y CUERPO propios -- no reusa esa plantilla. El
+// caller (send-reminder-thresholds-email.ts) garantiza que `thresholds`
+// nunca llega vacío: nunca se manda un mail sin nada.
+export type ReminderThresholdEmailRow = {
+  reminderTitle: string;
+  buildingName: string;
+  noticeDays: number;
+  // Fecha de vencimiento ya formateada por el caller ("31/12/2026") --
+  // igual que el resto de este archivo recibe todo ya resuelto.
+  dueDateLabel: string;
+};
+
+function renderNoticePhrase(noticeDays: number): string {
+  if (noticeDays === 0) {
+    return "aviso del mismo día";
+  }
+  if (noticeDays === 1) {
+    return "aviso de 1 día antes";
+  }
+  return `aviso de ${noticeDays} días antes`;
+}
+
+function renderReminderThresholdList(
+  rows: ReminderThresholdEmailRow[],
+): string {
+  const items = rows
+    .map(
+      (r) => `<li style="margin-bottom:8px;font-size:14px;color:${COLOR_INK};">
+        <strong>${r.reminderTitle}</strong> (${r.buildingName}) -- vence el ${r.dueDateLabel}, ${renderNoticePhrase(r.noticeDays)}
+      </li>`,
+    )
+    .join("");
+  return `<ul style="margin:0;padding-left:18px;">${items}</ul>`;
+}
+
+export function buildReminderThresholdsEmail(input: {
+  organizationName: string;
+  dateLabel: string;
+  appUrl: string;
+  thresholds: ReminderThresholdEmailRow[];
+}): EmailContent {
+  const subject = `Avisos de recordatorios de ${input.organizationName} -- ${input.dateLabel}`;
+  const count = input.thresholds.length;
+  const intro =
+    count === 1
+      ? "Un recordatorio entró hoy en su plazo de aviso:"
+      : `${count} avisos de recordatorios entraron hoy en su plazo:`;
+
+  const html = renderEmailLayout(`
+    <h1 style="margin:0 0 4px;font-family:${FONT_DISPLAY};font-size:20px;color:${COLOR_INK};">Avisos de recordatorios</h1>
+    <p style="margin:0 0 16px;font-size:14px;color:${COLOR_INK_MUTED};">${input.organizationName} · ${input.dateLabel}</p>
+    <p style="margin:0 0 12px;font-size:14px;color:${COLOR_INK};">${intro}</p>
+    ${renderReminderThresholdList(input.thresholds)}
+    ${renderButton("Abrir recordatorios", `${input.appUrl}/panel/reminders`)}
+  `);
+
+  return { subject, html };
+}

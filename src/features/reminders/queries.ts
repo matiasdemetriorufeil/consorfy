@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 import { buildings, reminderNoticeThresholds, reminders } from "@/db/schema";
@@ -114,4 +114,30 @@ export async function organizationHasAnyReminder(
     .limit(1);
 
   return !!row;
+}
+
+// IDs de recordatorios de una organización que ya recibieron AL MENOS UN
+// aviso de umbral dedicado (paso 3 de "múltiples umbrales"): tienen algún
+// `reminder_notice_thresholds` activo con `notified_at IS NOT NULL`. Lo usa
+// `sendDailySummaryEmail` para sacar del resumen general a los
+// recordatorios PRÓXIMOS (no vencidos) que ya tuvieron su aviso puntual --
+// un recordatorio vencido se sigue mostrando igual, ese filtro lo hace el
+// caller con `getReminderUrgency`. Sin filtrar por el `deleted_at`/`status`
+// del recordatorio: si tiene un umbral notificado, ya se avisó, sin
+// importar en qué estado esté el padre.
+export async function getReminderIdsWithNotifiedThreshold(
+  organizationId: string,
+): Promise<Set<string>> {
+  const rows = await db
+    .selectDistinct({ reminderId: reminderNoticeThresholds.reminderId })
+    .from(reminderNoticeThresholds)
+    .where(
+      and(
+        eq(reminderNoticeThresholds.organizationId, organizationId),
+        isNull(reminderNoticeThresholds.deletedAt),
+        isNotNull(reminderNoticeThresholds.notifiedAt),
+      ),
+    );
+
+  return new Set(rows.map((r) => r.reminderId));
 }

@@ -4,7 +4,10 @@ import { eq } from "drizzle-orm";
 
 import { db } from "@/db";
 import { organizations } from "@/db/schema";
-import { getReminderList } from "@/features/reminders/queries";
+import {
+  getReminderIdsWithNotifiedThreshold,
+  getReminderList,
+} from "@/features/reminders/queries";
 import { REMINDER_ACTIVE_STATUSES } from "@/features/reminders/reminder-schema";
 import { getReminderUrgency } from "@/features/reminders/reminder-urgency";
 import {
@@ -12,7 +15,11 @@ import {
   getTicketsReportedInRange,
 } from "@/features/tickets/queries";
 import { env } from "@/lib/env";
-import { formatDateSlug, zonedDayBoundsToUtc } from "@/lib/format-date";
+import {
+  formatDateSlug,
+  formatLongDate,
+  zonedDayBoundsToUtc,
+} from "@/lib/format-date";
 
 import {
   buildDailySummaryEmail,
@@ -22,20 +29,6 @@ import {
 import { ticketQualifiesAsOverdue } from "../notification-content";
 import { getAdminEmails } from "./get-admin-emails";
 import { getEmailProvider } from "./get-email-provider";
-
-// Fecha larga en español, SOLO fecha (sin hora, a diferencia de
-// formatExactDate en lib/format-date.ts, pensada para timestamps
-// puntuales) -- para el subject/encabezado del resumen ("27 de agosto de
-// 2026"). Un solo consumidor hoy (este archivo): se extrae a
-// lib/format-date.ts recién si aparece un segundo, mismo criterio ya
-// aplicado en el proyecto (ver el comentario de formatDueDate,
-// reminders/format-due-date.ts).
-function formatLongDate(date: Date, timezone: string): string {
-  return new Intl.DateTimeFormat("es-AR", {
-    timeZone: timezone,
-    dateStyle: "long",
-  }).format(date);
-}
 
 // Qué puede devolver un intento -- pensado para que el orquestador del
 // cron (paso 9.6, run-daily-cron.ts) pueda contar/loguear sin tener que
@@ -127,10 +120,16 @@ export async function sendDailySummaryEmail(
 
     const { start, end } = zonedDayBoundsToUtc(todaySlug, org.timezone);
 
-    const [reportedToday, openTickets, reminders] = await Promise.all([
+    const [
+      reportedToday,
+      openTickets,
+      reminders,
+      remindersWithNotifiedThreshold,
+    ] = await Promise.all([
       getTicketsReportedInRange(organizationId, start, end),
       getOpenTickets(organizationId),
       getReminderList(organizationId, null, REMINDER_ACTIVE_STATUSES),
+      getReminderIdsWithNotifiedThreshold(organizationId),
     ]);
 
     const newTickets: DailySummaryTicketRow[] = reportedToday.map((t) => ({
@@ -172,6 +171,15 @@ export async function sendDailySummaryEmail(
     for (const r of reminders) {
       const urgency = getReminderUrgency(r.dueDate, r.noticeDays, todaySlug);
       if (urgency === "ok") {
+        continue;
+      }
+      // Paso 3 ("múltiples umbrales"): un recordatorio PRÓXIMO (no vencido)
+      // que YA recibió al menos un aviso de umbral dedicado deja de contar
+      // acá -- ese mail puntual ya cumplió, repetirlo en el resumen general
+      // sería ruido. Si está VENCIDO (`urgency === "overdue"`) se sigue
+      // mostrando igual, sin importar si tuvo umbrales avisados -- eso no
+      // cambia.
+      if (urgency === "upcoming" && remindersWithNotifiedThreshold.has(r.id)) {
         continue;
       }
       remindersNeedingAttention.push({

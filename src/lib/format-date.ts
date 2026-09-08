@@ -24,6 +24,20 @@ export function formatExactDate(date: Date, timezone: string): string {
   }).format(date);
 }
 
+// Fecha larga SOLO fecha, sin hora ("27 de agosto de 2026") -- para
+// encabezados/asuntos de email. Vivía como helper privado en
+// send-daily-summary-email.ts hasta que apareció el segundo consumidor
+// (send-reminder-thresholds-email.ts, paso 3 de "múltiples umbrales"):
+// mismo criterio de extracción que el resto del proyecto (ver el
+// comentario de formatDueDate en reminders/format-due-date.ts). SIEMPRE
+// en la zona horaria de la organización, nunca UTC ni la del navegador.
+export function formatLongDate(date: Date, timezone: string): string {
+  return new Intl.DateTimeFormat("es-AR", {
+    timeZone: timezone,
+    dateStyle: "long",
+  }).format(date);
+}
+
 // Offset UTC de una zona IANA en un instante dado, en minutos (ej. -180
 // para GMT-03:00) -- se resuelve por instante, no una constante fija, para
 // que zonas con horario de verano den el offset correcto según la fecha.

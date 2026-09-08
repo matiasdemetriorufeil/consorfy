@@ -5,7 +5,9 @@ import { isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { organizations } from "@/db/schema";
 import { sendDailySummaryEmail } from "@/features/notifications/email/send-daily-summary-email";
+import { sendReminderThresholdsEmail } from "@/features/notifications/email/send-reminder-thresholds-email";
 import { sweepDueReminders } from "@/features/reminders/sweep-due-reminders";
+import { sweepReminderNoticeThresholds } from "@/features/reminders/sweep-reminder-notice-thresholds";
 import { sweepMissingTicketEmbeddings } from "@/features/tickets/embeddings/sweep-missing-embeddings";
 import { sweepOverdueTickets } from "@/features/tickets/sweep-overdue-tickets";
 
@@ -13,6 +15,8 @@ export type DailyCronOrgResult = {
   organizationId: string;
   ticketsNotified: number | null;
   remindersNotified: number | null;
+  reminderThresholdsNotified: number | null;
+  reminderThresholdsEmailStatus: string;
   dailySummaryStatus: string;
   embeddingsBackfilled: number | null;
 };
@@ -21,6 +25,7 @@ export type DailyCronResult = {
   organizationsProcessed: number;
   ticketsNotifiedTotal: number;
   remindersNotifiedTotal: number;
+  reminderThresholdsNotifiedTotal: number;
   dailySummariesSent: number;
   embeddingsBackfilledTotal: number;
   errors: string[];
@@ -85,6 +90,7 @@ export async function runDailyCron(): Promise<DailyCronResult> {
     organizationsProcessed: orgs.length,
     ticketsNotifiedTotal: 0,
     remindersNotifiedTotal: 0,
+    reminderThresholdsNotifiedTotal: 0,
     dailySummariesSent: 0,
     embeddingsBackfilledTotal: 0,
     errors: [],
@@ -122,6 +128,50 @@ export async function runDailyCron(): Promise<DailyCronResult> {
       }
     } catch (error) {
       result.errors.push(`[org ${org.id}] sweepDueReminders: ${String(error)}`);
+    }
+
+    // Aviso DEDICADO por umbral de aviso (paso 3 de "múltiples umbrales")
+    // -- capa NUEVA al lado de sweepDueReminders, no toca la campana ni
+    // reminders.notice_days. Corre ANTES del resumen diario a propósito:
+    // un umbral que se marca hoy tiene que sacar a su recordatorio del
+    // resumen general de HOY (ver el filtro en sendDailySummaryEmail).
+    // El mail sale SOLO si el barrido marcó al menos un umbral, y es UN
+    // solo mail con todos los de la organización juntos. Propio try/catch,
+    // mismo patrón que el resto de las tareas del cron.
+    let reminderThresholdsNotified: number | null = null;
+    let reminderThresholdsEmailStatus = "not_run";
+    try {
+      const sweep = await sweepReminderNoticeThresholds(
+        org.id,
+        org.timezone,
+        now,
+      );
+      if (sweep.ok) {
+        reminderThresholdsNotified = sweep.marked.length;
+        result.reminderThresholdsNotifiedTotal += sweep.marked.length;
+        if (sweep.marked.length === 0) {
+          reminderThresholdsEmailStatus = "skipped_empty";
+        } else {
+          const emailResult = await sendReminderThresholdsEmail(
+            org.id,
+            sweep.marked,
+          );
+          reminderThresholdsEmailStatus = emailResult.status;
+          if (emailResult.status === "error") {
+            result.errors.push(
+              `[org ${org.id}] sendReminderThresholdsEmail: ${emailResult.error}`,
+            );
+          }
+        }
+      } else {
+        result.errors.push(
+          `[org ${org.id}] sweepReminderNoticeThresholds: ${sweep.error}`,
+        );
+      }
+    } catch (error) {
+      result.errors.push(
+        `[org ${org.id}] sweepReminderNoticeThresholds: ${String(error)}`,
+      );
     }
 
     let dailySummaryStatus = "error";
@@ -168,6 +218,8 @@ export async function runDailyCron(): Promise<DailyCronResult> {
       organizationId: org.id,
       ticketsNotified,
       remindersNotified,
+      reminderThresholdsNotified,
+      reminderThresholdsEmailStatus,
       dailySummaryStatus,
       embeddingsBackfilled,
     });
