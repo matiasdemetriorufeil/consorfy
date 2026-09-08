@@ -5,7 +5,10 @@ import { and, asc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { buildings, reminderNoticeThresholds, reminders } from "@/db/schema";
 
-import type { ReminderStatusValue } from "./reminder-schema";
+import type {
+  ReminderColorValue,
+  ReminderStatusValue,
+} from "./reminder-schema";
 
 export type ReminderListRow = {
   id: string;
@@ -26,8 +29,15 @@ export type ReminderListRow = {
   // sembrado después de la migración): cae a `[notice_days]` para no
   // mostrar una lista vacía ni romper.
   noticeDaysThresholds: number[];
-  recurrence: (typeof reminders.$inferSelect)["recurrence"];
+  // `recurrence` NO se trae: el campo se sacó del formulario y del listado
+  // (ya no se muestra ni se filtra). La columna sigue en la base con los
+  // valores que ya tuvieran los eventos -- solo dejó de leerse acá.
   status: ReminderStatusValue;
+  // Color decorativo elegido por la persona (paso 1 de "color por evento").
+  // SIN relación con la urgencia. Por ahora solo lo consume el formulario
+  // para precargar el selector en edición -- ninguna vista (lista,
+  // calendario, próximos) lo muestra todavía; eso es el paso 2.
+  color: ReminderColorValue;
 };
 
 // Mismo patrón de organización que el resto del proyecto (ver CLAUDE.md >
@@ -74,8 +84,8 @@ export async function getReminderList(
         ),
         array[${reminders.noticeDays}]
       )`,
-      recurrence: reminders.recurrence,
       status: reminders.status,
+      color: reminders.color,
     })
     .from(reminders)
     .innerJoin(buildings, eq(buildings.id, reminders.buildingId))

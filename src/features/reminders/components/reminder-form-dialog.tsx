@@ -39,12 +39,12 @@ export function ReminderFormDialog({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>
-            {mode === "edit" ? "Editar recordatorio" : "Nuevo recordatorio"}
+            {mode === "edit" ? "Editar evento" : "Nuevo evento"}
           </DialogTitle>
           <DialogDescription>
             {mode === "edit"
-              ? "Los cambios se guardan para este recordatorio únicamente."
-              : "Cargá los datos del recordatorio."}
+              ? "Los cambios se guardan para este evento únicamente."
+              : "Cargá los datos del evento."}
           </DialogDescription>
         </DialogHeader>
         <ReminderForm
@@ -55,9 +55,7 @@ export function ReminderFormDialog({
           onSuccess={() => {
             onOpenChange(false);
             toast.success(
-              mode === "edit"
-                ? "Recordatorio actualizado."
-                : "Recordatorio creado.",
+              mode === "edit" ? "Evento actualizado." : "Evento creado.",
             );
           }}
         />

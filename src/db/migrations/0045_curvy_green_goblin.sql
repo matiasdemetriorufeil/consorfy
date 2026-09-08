@@ -1,0 +1,2 @@
+CREATE TYPE "public"."reminder_color" AS ENUM('pizarra', 'rojo', 'naranja', 'ambar', 'verde', 'azul', 'violeta', 'rosa');--> statement-breakpoint
+ALTER TABLE "reminders" ADD COLUMN "color" "reminder_color" DEFAULT 'pizarra' NOT NULL;

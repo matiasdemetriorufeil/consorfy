@@ -59,7 +59,7 @@ describe("buildDailySummaryEmail", () => {
     expect(result.html).toContain(
       "Reclamos sin resolver hace más de 3 días (0)",
     );
-    expect(result.html).toContain("Recordatorios que necesitan atención (0)");
+    expect(result.html).toContain("Eventos que necesitan atención (0)");
   });
 
   it("no muestra 'Sin novedades' si hay al menos un ítem en alguna lista", () => {
@@ -168,7 +168,7 @@ describe("buildDailySummaryEmail", () => {
     expect(result.html).toContain("Reclamos urgentes sin resolver (0)");
   });
 
-  it("distingue recordatorios vencidos de próximos a vencer", () => {
+  it("distingue eventos vencidos de próximos a vencer", () => {
     const result = buildDailySummaryEmail({
       organizationName: "Rivadavia Administraciones",
       dateLabel: "27 de agosto de 2026",
@@ -192,7 +192,7 @@ describe("buildDailySummaryEmail", () => {
       ],
     });
 
-    expect(result.html).toContain("Recordatorios que necesitan atención (2)");
+    expect(result.html).toContain("Eventos que necesitan atención (2)");
     expect(result.html).toContain("[Vencido]");
     expect(result.html).toContain("Service del ascensor");
     expect(result.html).toContain("[Próximo]");
@@ -217,11 +217,11 @@ describe("buildReminderThresholdsEmail", () => {
     });
 
     expect(result.subject).toBe(
-      "Avisos de recordatorios de Rivadavia Administraciones -- 27 de agosto de 2026",
+      "Avisos de eventos de Rivadavia Administraciones -- 27 de agosto de 2026",
     );
   });
 
-  it("junta varios umbrales (de recordatorios distintos) en un solo mail", () => {
+  it("junta varios umbrales (de eventos distintos) en un solo mail", () => {
     const result = buildReminderThresholdsEmail({
       organizationName: "Rivadavia Administraciones",
       dateLabel: "27 de agosto de 2026",
@@ -242,7 +242,7 @@ describe("buildReminderThresholdsEmail", () => {
       ],
     });
 
-    expect(result.html).toContain("2 avisos de recordatorios entraron hoy");
+    expect(result.html).toContain("2 avisos de eventos entraron hoy");
     expect(result.html).toContain("Fumigación trimestral");
     expect(result.html).toContain("Los Álamos");
     expect(result.html).toContain("aviso de 7 días antes");
@@ -294,7 +294,7 @@ describe("buildReminderThresholdsEmail", () => {
       ],
     });
 
-    expect(result.html).toContain("Un recordatorio entró hoy en su plazo");
-    expect(result.html).not.toContain("avisos de recordatorios entraron");
+    expect(result.html).toContain("Un evento entró hoy en su plazo");
+    expect(result.html).not.toContain("avisos de eventos entraron");
   });
 });

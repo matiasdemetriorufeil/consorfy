@@ -1,12 +1,24 @@
 import { z } from "zod";
 
-import { reminderRecurrence, reminderStatus } from "@/db/schema/reminders";
+import {
+  reminderColor,
+  reminderRecurrence,
+  reminderStatus,
+} from "@/db/schema/reminders";
+
+import { daysBetween } from "./reminder-urgency";
 
 // Compartido entre cliente (ReminderForm, vía zodResolver) y servidor
 // (actions.ts) -- mismo patrón que unit-schema.ts/building-schema.ts. Ver
 // CLAUDE.md > Reglas de seguridad: toda entrada se valida con Zod en el
 // servidor aunque ya se haya validado en el cliente.
 
+// El campo "Recurrencia" se sacó del formulario y del listado: ya no se
+// recibe ni se valida como input, y al crear un evento no se manda (la
+// base aplica su default 'none'). La columna `reminders.recurrence` y su
+// enum siguen existiendo en la base con los valores que ya tuvieran los
+// eventos, sin tocar -- por eso estos tres se mantienen: mapean ese enum y
+// vuelven a hacer falta el día que se reactive la funcionalidad.
 export const REMINDER_RECURRENCES = reminderRecurrence.enumValues;
 export type ReminderRecurrenceValue = (typeof REMINDER_RECURRENCES)[number];
 
@@ -38,6 +50,30 @@ export const REMINDER_ACTIVE_STATUSES: ReminderStatusValue[] = [
   "pending",
   "notified",
 ];
+
+// Color decorativo del evento (paso 1 de "color por evento"). Enum de
+// nombres de color, SIN relación con la urgencia -- son dos sistemas
+// separados a propósito (ver `reminderColor` en db/schema/reminders.ts y
+// los tokens `--evento-*` de globals.css, aparte de `--urgente`/`--alta`/
+// etc.). Los eventos ya existentes quedan en el default de la base
+// ("pizarra") tras la migración.
+export const REMINDER_COLORS = reminderColor.enumValues;
+export type ReminderColorValue = (typeof REMINDER_COLORS)[number];
+
+export const REMINDER_COLOR_LABEL: Record<ReminderColorValue, string> = {
+  pizarra: "Pizarra",
+  rojo: "Rojo",
+  naranja: "Naranja",
+  ambar: "Ámbar",
+  verde: "Verde",
+  azul: "Azul",
+  violeta: "Violeta",
+  rosa: "Rosa",
+};
+
+// Default al CREAR un evento nuevo -- mismo valor que el default de la
+// columna: nace "sin clasificar" y la persona le pone color si quiere.
+export const DEFAULT_REMINDER_COLOR: ReminderColorValue = "pizarra";
 
 // yyyy-mm-dd -- formato nativo de <input type="date">, mismo patrón que
 // occupancyFieldsSchema en people/person-schema.ts. `reminders.due_date` es
@@ -99,22 +135,68 @@ export const reminderFieldsSchema = z.object({
     .refine((days) => new Set(days).size === days.length, {
       message: "No repitas la misma cantidad de días en más de un umbral.",
     }),
-  recurrence: z.enum(REMINDER_RECURRENCES, {
-    message: "Elegí una recurrencia.",
+  // Color decorativo del evento -- enum, cualquiera de la paleta. El
+  // selector del formulario siempre manda un valor válido (arranca en un
+  // default, cada click pone otro válido), pero se valida igual en el
+  // servidor (CLAUDE.md > Reglas de seguridad).
+  color: z.enum(REMINDER_COLORS, {
+    message: "Elegí un color para el evento.",
   }),
 });
 
 export type ReminderFieldsInput = z.input<typeof reminderFieldsSchema>;
 export type ReminderFieldsOutput = z.output<typeof reminderFieldsSchema>;
 
-// El formulario (ReminderForm) maneja `noticeDaysThresholds` con estado
-// propio, NO react-hook-form -- mismo criterio que `buildingId`/`status`
-// (ver el comentario largo en reminder-form.tsx). Este subconjunto es el
-// que valida el zodResolver del cliente: los campos que sí viven en RHF.
-// El array de umbrales se valida en el servidor con `reminderFieldsSchema`
-// completo (vía createReminderFormSchema/updateReminderFormSchema).
+// Tope DINÁMICO de los días de anticipación: cada umbral, como mucho, la
+// cantidad de días entre HOY y la fecha de vencimiento -- no tiene sentido
+// "avisar 10 días antes" de un evento que es en 5 días. `today` lo inyecta
+// la Server Action con la fecha civil en la zona de la organización
+// (formatDateSlug), mismo criterio que page.tsx y los barridos -- nunca
+// `new Date()` adentro del schema. Reusa `daysBetween` de
+// reminder-urgency.ts, no reimplementa el cálculo.
+//
+// Fecha ya vencida (daysBetween < 0): el tope se acota a 0. Un evento con
+// fecha pasada nace "vencido" y ningún "N días antes" positivo tiene
+// sentido, pero "avisar el mismo día" (0) sí -- así sigue siendo posible
+// crear un evento con fecha pasada (con un único umbral de 0), sin agregar
+// ninguna restricción nueva sobre la fecha en sí.
+//
+// Vive en `create/updateReminderFormSchema` (que juntan dueDate,
+// noticeDaysThresholds y el `today` inyectado), no en `reminderFieldsSchema`
+// -- así ese esquema base sigue siendo un `z.object` plano y
+// `reminderClientFieldsSchema` puede seguir usando `.omit()`.
+//
+// Exportado: el cliente (ReminderForm, parte 1 de "tope en vivo") muestra
+// exactamente este mismo texto cuando ataja el error antes del submit, sin
+// esperar a que el servidor lo rechace.
+export const DUE_DATE_NOTICE_MESSAGE =
+  "Un umbral no puede superar los días que faltan para el vencimiento del evento.";
+
+function noticeThresholdsWithinDueDate(data: {
+  dueDate: string;
+  noticeDaysThresholds: number[];
+  today: string;
+}): boolean {
+  const maxAllowed = Math.max(0, daysBetween(data.today, data.dueDate));
+  return data.noticeDaysThresholds.every((days) => days <= maxAllowed);
+}
+
+// `today` no es un campo del formulario: lo agrega la Server Action antes
+// de parsear (mismo criterio que `buildingId`, que tampoco lo tipea la
+// persona). El cliente no lo manda -- por eso `reminderClientFieldsSchema`
+// lo omite junto con `noticeDaysThresholds`.
+const serverTodaySchema = z.string().regex(DATE_REGEX);
+
+// El formulario (ReminderForm) maneja `noticeDaysThresholds` y `color` con
+// estado propio, NO react-hook-form -- mismo criterio que `buildingId`/
+// `status` (ver el comentario largo en reminder-form.tsx): el selector de
+// color son botones custom, no un input que `register()` pueda atar. Este
+// subconjunto es el que valida el zodResolver del cliente: los campos que
+// sí viven en RHF. Umbrales y color se validan en el servidor con
+// `reminderFieldsSchema` completo (vía create/updateReminderFormSchema).
 export const reminderClientFieldsSchema = reminderFieldsSchema.omit({
   noticeDaysThresholds: true,
+  color: true,
 });
 export type ReminderClientFieldsInput = z.input<
   typeof reminderClientFieldsSchema
@@ -124,10 +206,18 @@ export type ReminderClientFieldsInput = z.input<
 // criterio que createUnitFormSchema (unit-schema.ts): se valida en la misma
 // pasada que el resto, aunque no sea algo que la persona tipee directo (sale
 // ya resuelto del edificio seleccionado en el header, o de un <select>
-// cuando la vista es "todos los edificios" -- ver ReminderForm).
-export const createReminderFormSchema = reminderFieldsSchema.extend({
-  buildingId: z.uuid("Elegí un edificio."),
-});
+// cuando la vista es "todos los edificios" -- ver ReminderForm). `today` lo
+// inyecta la Server Action (nunca lo tipea la persona) para el tope
+// dinámico de `noticeDaysThresholds` -- ver noticeThresholdsWithinDueDate.
+export const createReminderFormSchema = reminderFieldsSchema
+  .extend({
+    buildingId: z.uuid("Elegí un edificio."),
+    today: serverTodaySchema,
+  })
+  .refine(noticeThresholdsWithinDueDate, {
+    message: DUE_DATE_NOTICE_MESSAGE,
+    path: ["noticeDaysThresholds"],
+  });
 export type CreateReminderFormInput = z.input<typeof createReminderFormSchema>;
 
 // El estado SÍ es editable acá (a diferencia de la creación, que siempre
@@ -139,11 +229,17 @@ export type CreateReminderFormInput = z.input<typeof createReminderFormSchema>;
 // pero un paso posterior, no este). Sin esto, el filtro por estado del
 // listado (punto 1) no tendría ninguna forma real de mostrar algo más que
 // "pending".
-export const updateReminderFormSchema = reminderFieldsSchema.extend({
-  id: z.uuid(),
-  buildingId: z.uuid(),
-  status: z.enum(REMINDER_STATUSES, { message: "Elegí un estado." }),
-});
+export const updateReminderFormSchema = reminderFieldsSchema
+  .extend({
+    id: z.uuid(),
+    buildingId: z.uuid(),
+    status: z.enum(REMINDER_STATUSES, { message: "Elegí un estado." }),
+    today: serverTodaySchema,
+  })
+  .refine(noticeThresholdsWithinDueDate, {
+    message: DUE_DATE_NOTICE_MESSAGE,
+    path: ["noticeDaysThresholds"],
+  });
 export type UpdateReminderFormInput = z.input<typeof updateReminderFormSchema>;
 
 export type ReminderFieldErrors = Partial<

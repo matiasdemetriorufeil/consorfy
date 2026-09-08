@@ -30,6 +30,26 @@ export const reminderStatus = pgEnum("reminder_status", [
   "dismissed",
 ]);
 
+// Color puramente decorativo/organizativo que la persona le asigna a un
+// evento en el formulario (paso 1 de 2 -- el paso 2 lo usa en un rediseño
+// del calendario). NO tiene ninguna relación con la urgencia
+// (vencido/próximo/ok), que es un sistema aparte: acá los valores son
+// nombres de color, allá son niveles de riesgo con sus propios tokens
+// (`--urgente`/`--alta`/...). Los hex de cada color viven en globals.css
+// (`--evento-*`, un set aislado); acá solo el conjunto de claves.
+// "pizarra" (gris/neutro) es el default -- un evento sin clasificar
+// todavía, sin que implique ninguna categoría.
+export const reminderColor = pgEnum("reminder_color", [
+  "pizarra",
+  "rojo",
+  "naranja",
+  "ambar",
+  "verde",
+  "azul",
+  "violeta",
+  "rosa",
+]);
+
 export const reminders = pgTable(
   "reminders",
   {
@@ -64,6 +84,11 @@ export const reminders = pgTable(
     recurrence: reminderRecurrence("recurrence").notNull().default("none"),
     noticeDays: integer("notice_days").notNull().default(7),
     status: reminderStatus("status").notNull().default("pending"),
+    // Decorativo, elegido por la persona (ver `reminderColor` arriba). NOT
+    // NULL con default 'pizarra': los eventos ya existentes quedan en ese
+    // valor tras la migración (el ADD COLUMN ... DEFAULT rellena las filas
+    // viejas), sin perder ni inventar nada.
+    color: reminderColor("color").notNull().default("pizarra"),
     lastNotifiedAt: timestamp("last_notified_at", { withTimezone: true }),
     ...timestamps(),
   },

@@ -3,12 +3,10 @@
 import { es } from "date-fns/locale";
 import { useMemo, useState } from "react";
 
-import { Badge } from "@/components/ui/badge";
 import { Calendar } from "@/components/ui/calendar";
 
 import { formatDueDate } from "../format-due-date";
 import type { ReminderListRow } from "../queries";
-import { RECURRENCE_LABEL } from "../reminder-schema";
 import { getReminderUrgency, type ReminderUrgency } from "../reminder-urgency";
 import { ReminderStatusBadge } from "./reminder-status-badge";
 import {
@@ -160,9 +158,7 @@ export function ReminderCalendar({
               {formatDueDate(selectedDayKey)}
             </h3>
             {selectedDayReminders.length === 0 ? (
-              <p className="text-ink-muted text-sm">
-                Sin recordatorios este día.
-              </p>
+              <p className="text-ink-muted text-sm">Sin eventos este día.</p>
             ) : (
               <ul className="flex flex-col gap-3">
                 {selectedDayReminders.map((reminder) => (
@@ -185,9 +181,6 @@ export function ReminderCalendar({
                           today,
                         )}
                       />
-                      <Badge variant="outline" className="font-body">
-                        {RECURRENCE_LABEL[reminder.recurrence]}
-                      </Badge>
                     </div>
                     {reminder.description && (
                       <p className="text-ink-muted text-sm">
@@ -201,7 +194,7 @@ export function ReminderCalendar({
           </>
         ) : (
           <p className="text-ink-muted text-sm">
-            Tocá un día del calendario para ver sus recordatorios.
+            Tocá un día del calendario para ver sus eventos.
           </p>
         )}
       </div>

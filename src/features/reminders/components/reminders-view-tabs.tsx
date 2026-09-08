@@ -29,7 +29,7 @@ export function RemindersViewTabs({
 }) {
   return (
     <nav
-      aria-label="Vistas de recordatorios"
+      aria-label="Vistas de eventos"
       className="border-border -mx-4 overflow-x-auto border-b px-4 sm:mx-0 sm:px-0"
     >
       <ul className="flex w-max min-w-full gap-1">

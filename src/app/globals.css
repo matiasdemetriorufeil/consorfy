@@ -63,6 +63,21 @@
   --color-baja: var(--baja);
   --color-resuelto: var(--resuelto);
 
+  /* Colores de EVENTOS (recordatorios): decorativos/organizativos, los
+     elige la persona por evento. Conjunto TOTALMENTE aparte de los
+     semánticos de arriba -- nombres propios con prefijo `--evento-*` para
+     que ajustar un color de evento nunca pueda tocar el rojo de "urgente",
+     el ámbar de "alta", etc., ni al revés. Mismo criterio de aislamiento
+     por prefijo que `--landing-*`. Los valores viven en `:root`. */
+  --color-evento-pizarra: var(--evento-pizarra);
+  --color-evento-rojo: var(--evento-rojo);
+  --color-evento-naranja: var(--evento-naranja);
+  --color-evento-ambar: var(--evento-ambar);
+  --color-evento-verde: var(--evento-verde);
+  --color-evento-azul: var(--evento-azul);
+  --color-evento-violeta: var(--evento-violeta);
+  --color-evento-rosa: var(--evento-rosa);
+
   /* Radios chicos y consistentes. Nada de píldoras salvo en badges
      (que ya usan rounded-4xl, suficiente para ser pill con este --radius). */
   --radius-sm: calc(var(--radius) * 0.6);
@@ -119,6 +134,24 @@
   --media: #175cd3;
   --baja: #5b6169;
   --resuelto: #067647;
+
+  /* Colores de EVENTOS -- ver el bloque `--color-evento-*` en @theme inline.
+     Puramente decorativos: NO comparten ningún valor con los semánticos de
+     estado/urgencia de arriba y no comunican riesgo, solo sirven para que
+     la persona agrupe eventos a ojo. Tonos medios saturados (familia ~600)
+     con lightness pareja entre sí: se leen como relleno sólido tanto sobre
+     las superficies claras del panel (--surface #fff / --canvas #f3f5f4)
+     como sobre un fondo oscuro, para cuando exista un tema oscuro (hoy el
+     proyecto es solo tema claro). "pizarra" (gris azulado neutro) es el
+     default: un evento sin clasificar, sin implicar ninguna categoría. */
+  --evento-pizarra: #64748b;
+  --evento-rojo: #dc2626;
+  --evento-naranja: #ea580c;
+  --evento-ambar: #d97706;
+  --evento-verde: #16a34a;
+  --evento-azul: #2563eb;
+  --evento-violeta: #7c3aed;
+  --evento-rosa: #db2777;
 
   /* Slots semánticos de shadcn, retargeteados a la paleta de arriba para que
      todos los primitives instalados (button, card, dialog, etc.) hereden el

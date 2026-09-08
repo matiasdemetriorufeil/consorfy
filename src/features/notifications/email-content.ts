@@ -202,7 +202,7 @@ export function buildDailySummaryEmail(input: {
     ${renderSection("Reclamos nuevos hoy", input.newTickets.length, renderTicketList(input.newTickets, input.appUrl))}
     ${renderSection("Reclamos urgentes sin resolver", input.urgentUnresolvedTickets.length, renderTicketList(input.urgentUnresolvedTickets, input.appUrl))}
     ${renderSection(`Reclamos sin resolver hace más de ${TICKET_OVERDUE_THRESHOLD_DAYS} días`, input.overdueTickets.length, renderTicketList(input.overdueTickets, input.appUrl))}
-    ${renderSection("Recordatorios que necesitan atención", input.remindersNeedingAttention.length, renderReminderList(input.remindersNeedingAttention))}
+    ${renderSection("Eventos que necesitan atención", input.remindersNeedingAttention.length, renderReminderList(input.remindersNeedingAttention))}
     ${renderButton("Abrir el panel", `${input.appUrl}/panel`)}
   `);
 
@@ -258,19 +258,19 @@ export function buildReminderThresholdsEmail(input: {
   appUrl: string;
   thresholds: ReminderThresholdEmailRow[];
 }): EmailContent {
-  const subject = `Avisos de recordatorios de ${input.organizationName} -- ${input.dateLabel}`;
+  const subject = `Avisos de eventos de ${input.organizationName} -- ${input.dateLabel}`;
   const count = input.thresholds.length;
   const intro =
     count === 1
-      ? "Un recordatorio entró hoy en su plazo de aviso:"
-      : `${count} avisos de recordatorios entraron hoy en su plazo:`;
+      ? "Un evento entró hoy en su plazo de aviso:"
+      : `${count} avisos de eventos entraron hoy en su plazo:`;
 
   const html = renderEmailLayout(`
-    <h1 style="margin:0 0 4px;font-family:${FONT_DISPLAY};font-size:20px;color:${COLOR_INK};">Avisos de recordatorios</h1>
+    <h1 style="margin:0 0 4px;font-family:${FONT_DISPLAY};font-size:20px;color:${COLOR_INK};">Avisos de eventos</h1>
     <p style="margin:0 0 16px;font-size:14px;color:${COLOR_INK_MUTED};">${input.organizationName} · ${input.dateLabel}</p>
     <p style="margin:0 0 12px;font-size:14px;color:${COLOR_INK};">${intro}</p>
     ${renderReminderThresholdList(input.thresholds)}
-    ${renderButton("Abrir recordatorios", `${input.appUrl}/panel/reminders`)}
+    ${renderButton("Abrir eventos", `${input.appUrl}/panel/reminders`)}
   `);
 
   return { subject, html };

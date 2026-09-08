@@ -1,11 +1,9 @@
 import { CircleCheck } from "lucide-react";
 
 import { EmptyState } from "@/components/empty-state";
-import { Badge } from "@/components/ui/badge";
 
 import { formatDueDate } from "../format-due-date";
 import type { ReminderListRow } from "../queries";
-import { RECURRENCE_LABEL } from "../reminder-schema";
 import {
   describeReminderDueDate,
   getReminderUrgency,
@@ -40,7 +38,7 @@ export function UpcomingRemindersList({
       <EmptyState
         icon={CircleCheck}
         title="No hay vencimientos próximos"
-        description="Todos los recordatorios activos están tranquilos por ahora -- acá vas a ver los que se acercan a su fecha límite."
+        description="Todos los eventos activos están tranquilos por ahora -- acá vas a ver los que se acercan a su fecha límite."
       />
     );
   }
@@ -60,12 +58,11 @@ export function UpcomingRemindersList({
           >
             <div className="flex min-w-0 flex-col gap-1">
               <p className="text-ink font-medium">{reminder.title}</p>
-              <p className="text-ink-muted flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-                {showBuildingColumn && <span>{reminder.buildingName}</span>}
-                <Badge variant="outline" className="font-body">
-                  {RECURRENCE_LABEL[reminder.recurrence]}
-                </Badge>
-              </p>
+              {showBuildingColumn && (
+                <p className="text-ink-muted text-sm">
+                  {reminder.buildingName}
+                </p>
+              )}
             </div>
             <div className="flex shrink-0 flex-col items-start gap-1 sm:items-end">
               <ReminderUrgencyBadge urgency={urgency} />

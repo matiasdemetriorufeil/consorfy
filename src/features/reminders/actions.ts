@@ -7,6 +7,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import { reminderNoticeThresholds, reminders } from "@/db/schema";
 import { authorizedAction } from "@/lib/auth";
+import { formatDateSlug } from "@/lib/format-date";
 
 import {
   createReminderFormSchema,
@@ -116,7 +117,15 @@ export const createReminderAction = authorizedAction(
     _prevState: ReminderFormState,
     input: unknown,
   ): Promise<ReminderFormState> => {
-    const parsed = createReminderFormSchema.safeParse(input);
+    // `today`: fecha civil de HOY en la zona de la organización -- mismo
+    // criterio que page.tsx y los barridos (formatDateSlug), nunca
+    // `new Date()` adentro del schema. Se inyecta acá para el tope
+    // dinámico de los días de anticipación (ver reminder-schema.ts).
+    const today = formatDateSlug(new Date(), context.organization.timezone);
+    const parsed = createReminderFormSchema.safeParse({
+      ...(input as Record<string, unknown>),
+      today,
+    });
     if (!parsed.success) {
       return {
         ok: false,
@@ -125,11 +134,24 @@ export const createReminderAction = authorizedAction(
       };
     }
 
-    const { buildingId, noticeDaysThresholds, ...values } = parsed.data;
+    const {
+      title,
+      description,
+      dueDate,
+      buildingId,
+      noticeDaysThresholds,
+      color,
+    } = parsed.data;
+    // Se arma el objeto a insertar campo por campo (no `...spread`): así el
+    // `today` inyectado no llega a la base (no es columna) y `recurrence`
+    // -- que ya no está en el schema -- no se manda, así que la base aplica
+    // su default 'none'. `color` sí viaja (lo elige la persona en el
+    // formulario); si no se mandara, la base aplicaría su default 'pizarra'.
+    //
     // Valor puente: `reminders.notice_days` sigue siendo lo que lee
-    // getReminderUrgency (semáforo/campana/resumen) hasta el paso 3 --
-    // se mantiene igual al umbral MÁS GRANDE. El array está validado 1..3
-    // por Zod, así que `Math.max` nunca recibe vacío.
+    // getReminderUrgency (semáforo/campana/resumen); se mantiene igual al
+    // umbral MÁS GRANDE. El array está validado 1..3 por Zod, así que
+    // `Math.max` nunca recibe vacío.
     const maxThreshold = Math.max(...noticeDaysThresholds);
     try {
       await db.transaction(async (tx) => {
@@ -138,7 +160,10 @@ export const createReminderAction = authorizedAction(
           .values({
             organizationId: context.organization.id,
             buildingId,
-            ...values,
+            title,
+            description,
+            dueDate,
+            color,
             noticeDays: maxThreshold,
           })
           .returning({ id: reminders.id });
@@ -155,7 +180,7 @@ export const createReminderAction = authorizedAction(
       return {
         ok: false,
         formError:
-          "No pudimos guardar el recordatorio. Probá de nuevo en un momento.",
+          "No pudimos guardar el evento. Probá de nuevo en un momento.",
         fieldErrors: {},
       };
     }
@@ -171,7 +196,11 @@ export const updateReminderAction = authorizedAction(
     _prevState: ReminderFormState,
     input: unknown,
   ): Promise<ReminderFormState> => {
-    const parsed = updateReminderFormSchema.safeParse(input);
+    const today = formatDateSlug(new Date(), context.organization.timezone);
+    const parsed = updateReminderFormSchema.safeParse({
+      ...(input as Record<string, unknown>),
+      today,
+    });
     if (!parsed.success) {
       return {
         ok: false,
@@ -180,14 +209,35 @@ export const updateReminderAction = authorizedAction(
       };
     }
 
-    const { id, buildingId, noticeDaysThresholds, ...values } = parsed.data;
+    const {
+      id,
+      buildingId,
+      noticeDaysThresholds,
+      title,
+      description,
+      dueDate,
+      status,
+      color,
+    } = parsed.data;
+    // Igual que en createReminderAction: se arma el `.set()` campo por
+    // campo. `today` no es columna; `recurrence` ya no viaja en el schema,
+    // así que el UPDATE no lo toca y el valor viejo del evento queda
+    // intacto en la base. `color` sí se actualiza con lo que quedó elegido
+    // en el selector (que se precarga con el color real del evento).
     const maxThreshold = Math.max(...noticeDaysThresholds);
     let updated: { id: string } | undefined;
     try {
       await db.transaction(async (tx) => {
         [updated] = await tx
           .update(reminders)
-          .set({ ...values, noticeDays: maxThreshold })
+          .set({
+            title,
+            description,
+            dueDate,
+            status,
+            color,
+            noticeDays: maxThreshold,
+          })
           .where(
             and(
               eq(reminders.id, id),
@@ -217,7 +267,7 @@ export const updateReminderAction = authorizedAction(
       return {
         ok: false,
         formError:
-          "No pudimos guardar el recordatorio. Probá de nuevo en un momento.",
+          "No pudimos guardar el evento. Probá de nuevo en un momento.",
         fieldErrors: {},
       };
     }
@@ -226,7 +276,7 @@ export const updateReminderAction = authorizedAction(
       return {
         ok: false,
         formError:
-          "No encontramos ese recordatorio. Puede que ya lo hayan dado de baja.",
+          "No encontramos ese evento. Puede que ya lo hayan dado de baja.",
         fieldErrors: {},
       };
     }
@@ -253,7 +303,7 @@ export const softDeleteReminderAction = authorizedAction(
     const parsedBuildingId = z.uuid().safeParse(buildingId);
     const parsedReminderId = z.uuid().safeParse(reminderId);
     if (!parsedBuildingId.success || !parsedReminderId.success) {
-      return { ok: false, error: "Recordatorio inválido." };
+      return { ok: false, error: "Evento inválido." };
     }
 
     const [updated] = await db
@@ -270,7 +320,7 @@ export const softDeleteReminderAction = authorizedAction(
       .returning({ id: reminders.id });
 
     if (!updated) {
-      return { ok: false, error: "No encontramos ese recordatorio." };
+      return { ok: false, error: "No encontramos ese evento." };
     }
 
     revalidateReminderPaths();

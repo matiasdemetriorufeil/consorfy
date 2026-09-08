@@ -39,9 +39,9 @@ export function DeleteReminderDialog({
       );
       if (result.ok) {
         onOpenChange(false);
-        toast.success(`Recordatorio "${reminder.title}" dado de baja.`);
+        toast.success(`Evento "${reminder.title}" dado de baja.`);
       } else {
-        toast.error(result.error ?? "No pudimos dar de baja el recordatorio.");
+        toast.error(result.error ?? "No pudimos dar de baja el evento.");
       }
     });
   }
@@ -52,8 +52,8 @@ export function DeleteReminderDialog({
         <DialogHeader>
           <DialogTitle>Dar de baja &quot;{reminder.title}&quot;</DialogTitle>
           <DialogDescription>
-            Deja de aparecer en el listado de recordatorios. Esta acción se
-            puede revertir solo por soporte técnico.
+            Deja de aparecer en el listado de eventos. Esta acción se puede
+            revertir solo por soporte técnico.
           </DialogDescription>
         </DialogHeader>
 

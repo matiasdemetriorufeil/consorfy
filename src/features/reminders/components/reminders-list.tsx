@@ -4,7 +4,6 @@ import { CalendarClock, MoreHorizontal, SearchX } from "lucide-react";
 import { useState } from "react";
 
 import { EmptyState } from "@/components/empty-state";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -25,7 +24,6 @@ import type { ActiveBuildingOption } from "@/features/buildings/queries";
 import { formatDueDate } from "../format-due-date";
 import type { ReminderListRow } from "../queries";
 import { buildReminderListHref } from "../reminder-list-schema";
-import { RECURRENCE_LABEL } from "../reminder-schema";
 import { DeleteReminderDialog } from "./delete-reminder-dialog";
 import { ReminderFormDialog } from "./reminder-form-dialog";
 import { ReminderStatusBadge } from "./reminder-status-badge";
@@ -74,9 +72,7 @@ export function RemindersList({
   const isFormDialogOpen = dialog.type === "create" || dialog.type === "edit";
 
   const newReminderButton = (
-    <Button onClick={() => setDialog({ type: "create" })}>
-      Nuevo recordatorio
-    </Button>
+    <Button onClick={() => setDialog({ type: "create" })}>Nuevo evento</Button>
   );
 
   // Dos vacíos distintos, mismo criterio que la bandeja de reclamos
@@ -89,10 +85,10 @@ export function RemindersList({
       <div className="flex flex-col gap-4">
         <EmptyState
           icon={CalendarClock}
-          title="Todavía no hay recordatorios cargados"
+          title="Todavía no hay eventos cargados"
           description="Cargá el primero -- una fumigación, un service, un vencimiento -- con su fecha límite, para que no se te pase."
           action={{
-            label: "Cargar el primer recordatorio",
+            label: "Cargar el primer evento",
             onClick: () => setDialog({ type: "create" }),
           }}
         />
@@ -117,8 +113,8 @@ export function RemindersList({
       {reminders.length === 0 ? (
         <EmptyState
           icon={SearchX}
-          title="No encontramos recordatorios con este filtro"
-          description="Probá con otro estado, o mostrá todos los recordatorios de nuevo."
+          title="No encontramos eventos con este filtro"
+          description="Probá con otro estado, o mostrá todos los eventos de nuevo."
           action={{ label: "Ver todos", href: buildReminderListHref("all") }}
         />
       ) : (
@@ -129,7 +125,6 @@ export function RemindersList({
               {showBuildingColumn && <TableHead>Edificio</TableHead>}
               <TableHead>Vencimiento</TableHead>
               <TableHead>Anticipación</TableHead>
-              <TableHead>Recurrencia</TableHead>
               <TableHead>Estado</TableHead>
               <TableHead className="w-10">
                 <span className="sr-only">Acciones</span>
@@ -148,11 +143,6 @@ export function RemindersList({
                 <TableCell>{formatDueDate(reminder.dueDate)}</TableCell>
                 <TableCell>
                   {formatNoticeThresholds(reminder.noticeDaysThresholds)}
-                </TableCell>
-                <TableCell>
-                  <Badge variant="outline" className="font-body">
-                    {RECURRENCE_LABEL[reminder.recurrence]}
-                  </Badge>
                 </TableCell>
                 <TableCell>
                   <ReminderStatusBadge status={reminder.status} />

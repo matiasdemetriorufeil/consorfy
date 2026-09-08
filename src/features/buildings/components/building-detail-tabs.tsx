@@ -10,7 +10,7 @@ const TABS = [
   { segment: "people", label: "Personas" },
   { segment: "tickets", label: "Reclamos" },
   { segment: "documents", label: "Documentos" },
-  { segment: "reminders", label: "Recordatorios" },
+  { segment: "reminders", label: "Eventos" },
   { segment: "public-link", label: "Enlace público" },
 ] as const;
 

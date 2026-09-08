@@ -172,7 +172,7 @@ const FEATURES: Item[] = [
   },
   {
     icon: CalendarClock,
-    title: "Recordatorios",
+    title: "Eventos",
     body: "Vencimientos por edificio (expensas, seguros, service de ascensor) con vista de calendario y aviso cuando se acercan.",
   },
   {

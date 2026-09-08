@@ -25,7 +25,7 @@ export const panelNavItems: PanelNavItem[] = [
   { href: "/panel/tickets", label: "Reclamos", icon: Inbox },
   { href: "/panel/buildings", label: "Edificios", icon: Building2 },
   { href: "/panel/announcements", label: "Comunicados", icon: Megaphone },
-  { href: "/panel/reminders", label: "Recordatorios", icon: CalendarClock },
+  { href: "/panel/reminders", label: "Eventos", icon: CalendarClock },
   { href: "/panel/documents", label: "Documentos", icon: FileText },
   { href: "/panel/settings", label: "Configuración", icon: Settings },
 ];

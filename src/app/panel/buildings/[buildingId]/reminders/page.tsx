@@ -10,8 +10,8 @@ export default function BuildingRemindersPage() {
   return (
     <EmptyState
       icon={CalendarClock}
-      title="Los recordatorios todavía no están disponibles"
-      description="Vas a poder programar avisos recurrentes (como fumigaciones o mantenimiento) acá más adelante."
+      title="Los eventos todavía no están disponibles"
+      description="Vas a poder programar avisos de vencimientos (como fumigaciones o mantenimiento) acá más adelante."
     />
   );
 }

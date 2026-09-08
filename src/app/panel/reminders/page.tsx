@@ -52,7 +52,7 @@ export default async function RemindersPage({
       <EmptyState
         icon={Building2}
         title="Todavía no tenés ningún edificio cargado"
-        description="Los recordatorios se cargan por edificio -- creá el primero para empezar a programar vencimientos."
+        description="Los eventos se cargan por edificio -- creá el primero para empezar a programar vencimientos."
         action={{
           label: "Cargar mi primer edificio",
           href: "/panel/buildings",

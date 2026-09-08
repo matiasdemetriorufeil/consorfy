@@ -32,7 +32,7 @@ export const metadata: Metadata = {
     template: "%s · Consorfy",
   },
   description:
-    "Gestión de consorcios: reclamos, edificios, comunicados y recordatorios en un solo panel para administradores.",
+    "Gestión de consorcios: reclamos, edificios, comunicados y eventos en un solo panel para administradores.",
 };
 
 export const viewport: Viewport = {

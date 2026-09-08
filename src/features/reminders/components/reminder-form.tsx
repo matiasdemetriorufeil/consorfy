@@ -2,8 +2,8 @@
 
 import { startTransition, useActionState, useEffect, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Plus, X } from "lucide-react";
-import { Controller, useForm } from "react-hook-form";
+import { Check, Plus, X } from "lucide-react";
+import { useForm } from "react-hook-form";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -24,20 +24,41 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { ActiveBuildingOption } from "@/features/buildings/queries";
+import { formatDateSlug } from "@/lib/format-date";
+import { cn } from "@/lib/utils";
 
 import { createReminderAction, updateReminderAction } from "../actions";
 import type { ReminderListRow } from "../queries";
 import {
+  DEFAULT_REMINDER_COLOR,
+  DUE_DATE_NOTICE_MESSAGE,
   initialReminderFormState,
   MAX_NOTICE_THRESHOLDS,
-  RECURRENCE_LABEL,
   reminderClientFieldsSchema,
-  REMINDER_RECURRENCES,
+  REMINDER_COLOR_LABEL,
+  REMINDER_COLORS,
   REMINDER_STATUS_LABEL,
   REMINDER_STATUSES,
   type ReminderClientFieldsInput,
+  type ReminderColorValue,
   type ReminderStatusValue,
 } from "../reminder-schema";
+import { daysBetween } from "../reminder-urgency";
+
+// Relleno sólido de cada color de la paleta -- clases literales para que el
+// scanner de Tailwind v4 las genere (mismo motivo que PRIORITY_CLASS y
+// compañía). Los hex viven en globals.css (`--evento-*`); este conjunto es
+// aparte del de urgencia (`bg-urgente`/`bg-alta`/...).
+const REMINDER_COLOR_SWATCH: Record<ReminderColorValue, string> = {
+  pizarra: "bg-evento-pizarra",
+  rojo: "bg-evento-rojo",
+  naranja: "bg-evento-naranja",
+  ambar: "bg-evento-ambar",
+  verde: "bg-evento-verde",
+  azul: "bg-evento-azul",
+  violeta: "bg-evento-violeta",
+  rosa: "bg-evento-rosa",
+};
 
 // Campos que sí viven en react-hook-form -- ver el comentario de más abajo
 // sobre por qué `buildingId`/`status`/`noticeDaysThresholds` quedan afuera.
@@ -45,7 +66,6 @@ const RHF_MANAGED_FIELDS = new Set<keyof ReminderClientFieldsInput>([
   "title",
   "description",
   "dueDate",
-  "recurrence",
 ]);
 
 // La lista de umbrales se maneja como estado propio (strings, lo que
@@ -57,6 +77,37 @@ function parseThresholdInputs(values: string[]): number[] {
   return values.map((value) =>
     value.trim() === "" ? Number.NaN : Number(value),
   );
+}
+
+// Tope dinámico en el CLIENTE (parte 1): cada umbral, como mucho, la
+// cantidad de días que van de HOY a la fecha de vencimiento -- para que la
+// persona vea el problema mientras completa el formulario, sin esperar al
+// submit. La validación del servidor (noticeThresholdsWithinDueDate en
+// reminder-schema.ts) NO cambia y sigue siendo la autoridad final; esto
+// solo hace que casi nunca se llegue a ver su error.
+//
+// Es la MISMA cuenta que el servidor: se reusa `daysBetween` de
+// reminder-urgency.ts (función pura, sin `server-only`), no se reimplementa
+// el cálculo de días. Lo único propio del cliente es el "hoy": la fecha
+// civil local del navegador (`formatDateSlug` con la zona del navegador),
+// porque acá no se conoce la zona de la organización que usa el servidor
+// -- diferencia intencional, sin efecto práctico salvo en la ventana de
+// pocas horas alrededor de la medianoche.
+function browserTodaySlug(): string {
+  return formatDateSlug(
+    new Date(),
+    Intl.DateTimeFormat().resolvedOptions().timeZone,
+  );
+}
+
+// `null` mientras la fecha de vencimiento no sea una fecha completa y
+// válida (campo vacío o a medio tipear): sin fecha no hay tope que aplicar.
+// Vencida (daysBetween < 0) -> 0, igual que el servidor.
+function maxNoticeDaysFor(dueDate: string): number | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
+    return null;
+  }
+  return Math.max(0, daysBetween(browserTodaySlug(), dueDate));
 }
 
 // Un solo formulario para alta y edición (mismo criterio que UnitForm,
@@ -99,6 +150,13 @@ export function ReminderForm({
   const [status, setStatus] = useState<ReminderStatusValue>(
     reminder?.status ?? "pending",
   );
+  // Color decorativo. Estado propio (no react-hook-form) -- mismo criterio
+  // que `status`: el selector son botones custom, no un input. En edición
+  // se precarga el color REAL del evento; al crear, el default de la
+  // paleta.
+  const [color, setColor] = useState<ReminderColorValue>(
+    reminder?.color ?? DEFAULT_REMINDER_COLOR,
+  );
   // Umbrales de aviso (1 a 3). En edición se precargan desde los umbrales
   // REALES del recordatorio (`reminder.noticeDaysThresholds`, ya resueltos
   // por getReminderList -- que además cubre el caso borde del recordatorio
@@ -130,9 +188,9 @@ export function ReminderForm({
   const {
     register,
     handleSubmit,
-    control,
     setError,
     setFocus,
+    watch,
     formState: { errors },
   } = useForm<ReminderClientFieldsInput>({
     resolver: zodResolver(reminderClientFieldsSchema),
@@ -141,13 +199,11 @@ export function ReminderForm({
           title: reminder.title,
           description: reminder.description ?? "",
           dueDate: reminder.dueDate,
-          recurrence: reminder.recurrence,
         }
       : {
           title: "",
           description: "",
           dueDate: "",
-          recurrence: "none",
         },
   });
 
@@ -185,22 +241,77 @@ export function ReminderForm({
   const thresholdsError = !state.ok
     ? state.fieldErrors.noticeDaysThresholds
     : undefined;
-  const atMaxThresholds = thresholds.length >= MAX_NOTICE_THRESHOLDS;
+
+  // Tope dinámico, recalculado en cada render a partir de la fecha de
+  // vencimiento ACTUAL del formulario -- si la persona la cambia después de
+  // cargar umbrales, esto se rehace solo y los que quedaron por encima del
+  // nuevo tope pasan a estar marcados (punto 4).
+  const maxNoticeDays = maxNoticeDaysFor(watch("dueDate"));
+  const parsedThresholds = parseThresholdInputs(thresholds);
+
+  // Punto 2/4: un umbral queda inválido AL INSTANTE si supera el tope --
+  // ya sea porque se tipeó de más, o porque se movió la fecha de
+  // vencimiento. Se MARCA (mismo mensaje que el servidor,
+  // DUE_DATE_NOTICE_MESSAGE), no se autocorrige: pisar en silencio un
+  // número que la persona escribió a propósito es peor que mostrarle cuál
+  // corregir, y es lo mismo que hace el resto del formulario con sus
+  // errores. `min`/`max` del <input> ya frenan el spinner; esto ataja lo
+  // que se tipea a mano.
+  const overCapIndexes = new Set<number>(
+    maxNoticeDays === null
+      ? []
+      : parsedThresholds.flatMap((days, index) =>
+          Number.isFinite(days) && days > maxNoticeDays ? [index] : [],
+        ),
+  );
+  const clientThresholdsError =
+    overCapIndexes.size > 0 ? DUE_DATE_NOTICE_MESSAGE : null;
+
+  // Punto 3: "Agregar otro umbral" se apaga al llegar a 3 (como ya pasaba)
+  // y TAMBIÉN cuando ya no queda ningún valor entero válido y sin repetir
+  // para sumar -- p. ej. si al evento le faltan 0 días, el único valor
+  // posible es 0: con un umbral ya en 0, un segundo sería duplicado y fuera
+  // de rango. Con 2 o más días de margen esto nunca se nota (siempre
+  // alcanza para 3 umbrales distintos).
+  const usedValuesInRange = new Set(
+    maxNoticeDays === null
+      ? []
+      : parsedThresholds.filter(
+          (days) =>
+            Number.isInteger(days) && days >= 0 && days <= maxNoticeDays,
+        ),
+  );
+  const cannotAddThreshold =
+    thresholds.length >= MAX_NOTICE_THRESHOLDS ||
+    (maxNoticeDays !== null && usedValuesInRange.size >= maxNoticeDays + 1);
 
   return (
     <form
       noValidate
       onSubmit={handleSubmit((data) => {
         const noticeDaysThresholds = parseThresholdInputs(thresholds);
+        // Defensa en profundidad: el botón ya está deshabilitado con un
+        // umbral fuera del tope, pero si algo lo saltea no se dispara la
+        // acción (el servidor lo rechazaría igual, con este mismo mensaje).
+        const cap = maxNoticeDaysFor(data.dueDate);
+        if (
+          cap !== null &&
+          noticeDaysThresholds.some(
+            (days) => Number.isFinite(days) && days > cap,
+          )
+        ) {
+          return;
+        }
         const payload = reminder
           ? {
               ...data,
               id: reminder.id,
               buildingId: reminder.buildingId,
               status,
+              color,
               noticeDaysThresholds,
             }
-          : { ...data, buildingId, noticeDaysThresholds };
+          : { ...data, buildingId, color, noticeDaysThresholds };
         startTransition(() => dispatch(payload));
       })}
     >
@@ -270,6 +381,60 @@ export function ReminderForm({
           <FieldError errors={[errors.description]} />
         </Field>
 
+        {/* Color decorativo/organizativo (paso 1 de 2). Selector visual --
+            un círculo por color de la paleta, el elegido lleva un anillo.
+            No hay precedente de "elegir una opción mostrada visualmente"
+            como control de formulario en el proyecto (los chips de estado
+            son <Link> de navegación), así que es un radiogroup ARIA a mano:
+            role="radiogroup" + botones role="radio", un click cambia la
+            selección. SIN relación con la urgencia. */}
+        <Field>
+          <FieldLabel id="reminder-color-label" htmlFor="reminder-color">
+            Color
+          </FieldLabel>
+          <FieldDescription>
+            Para organizar los eventos a ojo. No cambia los avisos ni la
+            urgencia.
+          </FieldDescription>
+          <div
+            id="reminder-color"
+            role="radiogroup"
+            aria-labelledby="reminder-color-label"
+            className="flex flex-wrap gap-2"
+          >
+            {REMINDER_COLORS.map((value) => {
+              const selected = color === value;
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  aria-label={REMINDER_COLOR_LABEL[value]}
+                  title={REMINDER_COLOR_LABEL[value]}
+                  disabled={isPending}
+                  onClick={() => setColor(value)}
+                  className={cn(
+                    "border-border/60 flex size-8 items-center justify-center rounded-full border transition outline-none",
+                    "focus-visible:ring-ring focus-visible:ring-offset-background focus-visible:ring-2 focus-visible:ring-offset-2",
+                    "disabled:opacity-50",
+                    REMINDER_COLOR_SWATCH[value],
+                    selected &&
+                      "ring-ring ring-offset-background ring-2 ring-offset-2",
+                  )}
+                >
+                  {selected && (
+                    <Check
+                      className="size-4 text-white drop-shadow-sm"
+                      aria-hidden="true"
+                    />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </Field>
+
         <Field data-invalid={!!errors.dueDate}>
           <FieldLabel htmlFor="reminder-due-date">
             Fecha de vencimiento
@@ -290,13 +455,14 @@ export function ReminderForm({
             elementos" que ya usa AnnouncementSegmentForm (personas
             puntuales) y los adjuntos de TicketForm: <Button variant=
             "outline"> para agregar, un botón-ícono por fila para quitar. */}
-        <Field data-invalid={!!thresholdsError}>
+        <Field data-invalid={!!thresholdsError || !!clientThresholdsError}>
           <FieldLabel htmlFor="reminder-notice-days-0">
             Días de anticipación
           </FieldLabel>
           <FieldDescription>
-            Cuántos días antes del vencimiento querés que te avisemos. Podés
-            cargar hasta {MAX_NOTICE_THRESHOLDS}.
+            Cuántos días antes del vencimiento querés que le llegue un mail al
+            administrador. Se envía uno por cada umbral, el día que corresponde.
+            Podés cargar hasta {MAX_NOTICE_THRESHOLDS}.
           </FieldDescription>
           <div className="flex flex-col gap-2">
             {thresholds.map((value, index) => (
@@ -305,10 +471,10 @@ export function ReminderForm({
                   id={`reminder-notice-days-${index}`}
                   type="number"
                   min={0}
-                  max={365}
+                  max={maxNoticeDays ?? 365}
                   className="flex-1"
                   aria-label={`Umbral de aviso ${index + 1}, en días`}
-                  aria-invalid={!!thresholdsError}
+                  aria-invalid={!!thresholdsError || overCapIndexes.has(index)}
                   disabled={isPending}
                   value={value}
                   onChange={(event) =>
@@ -333,7 +499,7 @@ export function ReminderForm({
             variant="outline"
             size="sm"
             className="mt-1 w-fit"
-            disabled={isPending || atMaxThresholds}
+            disabled={isPending || cannotAddThreshold}
             onClick={addThreshold}
           >
             <Plus />
@@ -341,40 +507,13 @@ export function ReminderForm({
           </Button>
           <FieldError
             errors={[
-              thresholdsError ? { message: thresholdsError } : undefined,
+              thresholdsError
+                ? { message: thresholdsError }
+                : clientThresholdsError
+                  ? { message: clientThresholdsError }
+                  : undefined,
             ]}
           />
-        </Field>
-
-        <Field data-invalid={!!errors.recurrence}>
-          <FieldLabel htmlFor="reminder-recurrence">Recurrencia</FieldLabel>
-          <Controller
-            control={control}
-            name="recurrence"
-            render={({ field }) => (
-              <Select
-                value={field.value}
-                onValueChange={field.onChange}
-                disabled={isPending}
-              >
-                <SelectTrigger
-                  id="reminder-recurrence"
-                  aria-invalid={!!errors.recurrence}
-                  className="w-full"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {REMINDER_RECURRENCES.map((value) => (
-                    <SelectItem key={value} value={value}>
-                      {RECURRENCE_LABEL[value]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          />
-          <FieldError errors={[errors.recurrence]} />
         </Field>
 
         {/* Estado: solo editable en edición -- un recordatorio nuevo
@@ -404,12 +543,16 @@ export function ReminderForm({
           </Field>
         )}
 
-        <Button type="submit" disabled={isPending} className="w-full">
+        <Button
+          type="submit"
+          disabled={isPending || !!clientThresholdsError}
+          className="w-full"
+        >
           {isPending
             ? "Guardando…"
             : mode === "edit"
               ? "Guardar cambios"
-              : "Crear recordatorio"}
+              : "Crear evento"}
         </Button>
       </FieldGroup>
     </form>
