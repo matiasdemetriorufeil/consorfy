@@ -8929,6 +8929,493 @@ gestión desde el panel) pasan, y `tsc --noEmit` / `eslint` / `format:check`
 / `vitest` (254 tests) / `next build` quedaron en verde. Sin dependencias
 nuevas -- `package.json` / `package-lock.json` sin tocar.
 
+## Ajustes posteriores a la etapa 17 (sin plan numerado)
+
+Cambios hechos DESPUÉS de `docs(17)`, sin un plan numerado detrás: cada uno
+salió de un pedido directo del administrador usando el producto. Se
+documentan acá con el mismo nivel de detalle que las etapas 14/16/17. Una
+sub-sección por tema; el historial de commits tiene los diffs exactos.
+Ninguno de estos cambios tocó `package.json` / `package-lock.json`.
+
+Los 5 checks (`tsc --noEmit`, `eslint`, `format:check`, `vitest`,
+`next build`) y los 4 e2e de flujos críticos quedaron en verde en cada
+commit; cada paso se verificó además contra la base de desarrollo y, cuando
+tenía sentido, con un spec de Playwright a medida. Migraciones: `0043` a
+`0046` aplicadas a desarrollo y a **producción**.
+
+### 1. Prefijo "+54" fijo (no editable) en los campos de teléfono
+
+**Qué cambió:** los 4 campos de teléfono del sistema muestran "+54" como
+etiqueta FIJA que no se puede editar, borrar ni seleccionar como texto. La
+persona escribe solo lo que va después. Antes cada campo era un `<input>`
+común donde había que tipear el "+54" (o, en un intento intermedio -- commit
+`30e0fd1` --, venía precargado como valor editable).
+
+**`src/components/phone-number-input.tsx`** (nuevo) -- `PhoneNumberInput`,
+Client Component, `forwardRef`. Es CONTROLADO (`value`/`onChange` sobre el
+valor E.164 completo o `""`), pensado para envolverse en un `<Controller>`
+de react-hook-form -- NO `register`, porque tiene que transformar entre
+"valor guardado" y "parte visible" en las dos direcciones. Misma convención
+que los otros campos compuestos del proyecto (categoría en `TicketForm`,
+unidad/rol en `PersonOccupancyForm`).
+
+- El "+54" es un `<span aria-hidden pointer-events-none select-none>`
+  APARTE, no parte del `<input>` -- por eso no se puede tocar.
+- El wrapper es un `<div data-slot="input">` que copia las clases visuales
+  de `src/components/ui/input.tsx` (borde, foco, `aria-invalid`, disabled)
+  pero con `focus-within` / `has-[input:disabled]` en vez de las
+  pseudoclases directas, porque el foco real vive en el `<input>` de
+  adentro. `data-slot="input"` a propósito: así el selector de
+  touch-targets de `TicketForm` (`[&_[data-slot=input]]:min-h-11`) lo
+  agranda en el formulario público sin que este componente sepa nada de ese
+  contexto.
+
+**`src/lib/phone.ts`** -- `AR_PHONE_PREFIX = "+54"` y el puente entre
+"E.164 completo" (lo que se guarda/valida) y "parte editable" (lo que se
+ve):
+
+- `splitArPhone(value) -> { rest, hadPrefix }`. Si `value` no arranca con
+  `+54` (no debería para un dato ya validado, pero un import viejo o una
+  edición fuera de la UI podrían) se devuelve ENTERO como `rest`, sin
+  recortar nada -- no se pierde ni se corrompe el dato en silencio;
+  `hadPrefix` deja detectarlo.
+- `joinArPhone(rest) -> string`. Parte editable vacía (o solo espacios) ->
+  `""`, **NUNCA `"+54"` solo**. Esto es la decisión clave del punto:
+
+**Criterio distinto obligatorio vs. opcional.** Solo el teléfono del
+formulario público es obligatorio (`requiredPhoneSchema` en
+`src/features/public-form/ticket-schema.ts`). Los otros tres son OPCIONALES
+(`people.phoneE164` y `buildings.adminWhatsappE164`, los dos
+`.nullish().transform((v) => v ? ... : null)`). Por eso `joinArPhone`
+devuelve `""` y no `"+54"` cuando no se escribió nada: en los opcionales
+"sin escribir" tiene que seguir llegando vacío al esquema -> se transforma a
+`null`; en el obligatorio, un vacío lo rechaza la validación igual que antes.
+`TicketForm` cambió su `DEFAULT_VALUES.phoneE164` de `"+54"` a `""`.
+
+**Los 4 campos** (todos vía `<Controller>` + `<PhoneNumberInput>`,
+`placeholder="93515551234"`):
+
+- `src/features/public-form/components/ticket-form.tsx` -- `#ticket-phone`
+  (obligatorio).
+- `src/features/people/components/person-form.tsx` -- `#edit-person-phone`
+  (edición de persona; opcional; `value={field.value ?? ""}` porque puede
+  cargar un `null` guardado).
+- `src/features/people/components/person-occupancy-form.tsx` --
+  `#person-phone` (alta de persona; opcional).
+- `src/features/buildings/components/building-form.tsx` --
+  `#building-admin-whatsapp` (WhatsApp del administrador del edificio;
+  opcional).
+
+**Texto de ayuda** (`AR_WHATSAPP_HELP`, commit `01ccc8b`): reescrito a
+`"Escribilo sin el 0 ni el 15 (código de área + número). Por ejemplo,
+3515551234 para un celular de Córdoba."` -- antes mostraba un ejemplo
+"+549351..." que ahora repite lo que ya se ve en el prefijo fijo.
+
+**Tests:** `src/lib/phone.test.ts` cubre `splitArPhone` / `joinArPhone` y el
+round-trip (`+54` solo y `""` colapsan los dos a `""`). El e2e
+`flujo-1-alta-reclamo-publico.spec.ts` llena `#ticket-phone` con
+`NEIGHBOR_PHONE_NATIONAL` (todo lo que va después de `+54`).
+
+Commits: `30e0fd1` (precargar `+54` como valor editable -- intento
+intermedio), `674b80f` (`PhoneNumberInput` + prefijo fijo real, los 3 campos
+de personas/público), `01ccc8b` (texto de ayuda), `0ae3219` (WhatsApp del
+administrador). El commit `1ad9b0e` ("adaptación del formulario para
+móviles") es de la misma tanda pero no es de este tema.
+
+### 2. Corrección operativa del WhatsApp del administrador, directo en producción
+
+El número de WhatsApp del administrador de un edificio se corrigió con un
+`UPDATE` directo sobre `buildings.admin_whatsapp_e164` en la base de
+**producción** -- no por el panel, ni por seed, ni por migración. El campo
+ya existe en el formulario de edición de edificio (etapa 4), pero la
+corrección se necesitaba en vivo y se hizo por SQL, autorizada
+explícitamente por el dueño del proyecto en el momento.
+
+**Para quien retome:** no hay diff de código que explique el valor actual de
+ese campo en producción -- la fuente de verdad es la fila de `buildings` en
+la base de prod. El `seed.ts` (solo para desarrollo) tiene otros números. No
+quedó registro estructurado del cambio más allá de esta nota.
+
+### 3. Renombre de "Recordatorio" a "Evento" en toda la interfaz
+
+Renombre de "Recordatorio"/"Recordatorios" -> "Evento"/"Eventos" en **toda
+la superficie que ve el usuario**, respetando género y número:
+
+- Ítem del menú del panel (`src/features/panel/nav-items.ts`), pestaña del
+  detalle de edificio (`building-detail-tabs.tsx`).
+- Todo el CRUD: `reminders-list.tsx`, `reminder-form-dialog.tsx`,
+  `delete-reminder-dialog.tsx`, `reminder-calendar.tsx`,
+  `upcoming-reminders-list.tsx`, `reminder-status-chips.tsx`,
+  `reminders-view-tabs.tsx`, `src/app/panel/reminders/page.tsx` y el
+  placeholder `src/app/panel/buildings/[buildingId]/reminders/page.tsx`.
+- El card de la landing pública (`landing-page.tsx`) y la meta description
+  SEO del sitio (`src/app/layout.tsx`).
+- **Los dos mails** (`src/features/notifications/email-content.ts`):
+  "Eventos que necesitan atención" (sección del resumen diario), "Avisos de
+  eventos" / "Un evento entró hoy en su plazo..." (mail de umbrales), botón
+  "Abrir eventos".
+
+**NO se tocó nada interno:** la tabla `reminders`, sus columnas, la tabla
+`reminder_notice_thresholds`, las rutas (`/panel/reminders`, ...), los
+archivos (`reminder-*.tsx`), las funciones (`getReminderList`,
+`sweepDueReminders`, `buildReminderDueNotification`, ...) ni los tipos
+(`ReminderListRow`, ...). **Regla para quien retome: UI en español =
+"evento", código y base de datos en inglés = "reminder", y no unificarlos.**
+La notificación de campana (`buildReminderDueNotification`, "Vencimiento
+próximo en {edificio}") nunca tuvo la palabra "recordatorio", así que no
+cambió acá (sí más adelante, por el punto 8).
+
+Commit `4b6a52f` (junto con los puntos 5 y 6 y el paso 1 del punto 7).
+
+### 4. Hasta 3 umbrales de aviso por evento + mail dedicado por umbral
+
+Un evento puede tener entre 1 y 3 umbrales de aviso en días ("avisame 7
+días antes, 3 días antes, y el mismo día") en vez del único `notice_days`
+que tenía antes.
+
+**Tabla `reminder_notice_thresholds`** (migración `0043_furry_blacklash.sql`;
+trigger y backfill en la custom `0044_reminder_notice_thresholds_trigger_and_backfill.sql`).
+Una fila por umbral: `id`, `organization_id` (denormalizado, para la FK
+compuesta -- nunca se actualiza a mano), `reminder_id`, `notice_days`
+(0..365, con `CHECK`), `notified_at` (nullable: cuándo se mandó su aviso
+DEDICADO), timestamps + `deleted_at`.
+
+- FK compuesta `(reminder_id, organization_id) -> reminders(id,
+organization_id) ON DELETE restrict`.
+- Índice único **PARCIAL** `(reminder_id, notice_days) WHERE deleted_at IS
+NULL` -- nunca una constraint plana: con borrado lógico, una plana
+  bloquearía volver a agregar un umbral que se sacó (convención congelada
+  del proyecto, ver `buildings.slug` / `people.phone_e164`). Su prefijo
+  izquierdo (`reminder_id`) cubre además "traé los umbrales de este
+  evento", así que no hace falta un índice aparte.
+- RLS: solo `deny_anon_authenticated`. Trigger `set_updated_at` a mano
+  (drizzle-kit no modela triggers, igual que en las migraciones 0011/0024).
+
+**Es una tabla hija, NO una columna array.** El proyecto ya había descartado
+arrays en `announcements` (ver el comentario de `building_id` ahí), y cada
+umbral necesita estado propio MUTABLE (`notified_at`), algo que un array no
+lleva por elemento. Mismo molde que `announcement_recipients`.
+
+**Migración de datos (0044):** cada evento existente termina con EXACTAMENTE
+UN umbral igual a su `notice_days` actual (incluidos los que tienen
+`deleted_at` -- su valor de anticipación no se pierde por estar archivado).
+`WHERE NOT EXISTS` para que la sentencia sea repetible.
+
+**`reminders.notice_days` se mantiene como "columna puente".** NO se
+eliminó. `getReminderUrgency` -- el semáforo de vencimientos, la campana
+(`sweepDueReminders`) y el resumen diario -- sigue leyendo `notice_days`,
+que las Server Actions mantienen en sync con `Math.max(umbrales)` en cada
+alta/edición. Eliminarla era un paso posterior que no se hizo.
+`ReminderListRow` trae AMBOS: `noticeDays` (el puente) y
+`noticeDaysThresholds` (los reales, resueltos en `getReminderList` con una
+subconsulta `array_agg(... ORDER BY notice_days DESC)` y `COALESCE` a
+`array[notice_days]` para eventos que todavía no tienen filas hijas).
+
+**Formulario (`reminder-form.tsx`):** lista de 1..3 `<input type="number">`
+con botones agregar/quitar (mismo estilo de "lista de hasta N" que
+`AnnouncementSegmentForm` y los adjuntos de `TicketForm`). Los umbrales
+viven en `useState` (strings), **NO en react-hook-form** -- mismo criterio
+que `buildingId`/`status`: el resolver de Zod (`reminderClientFieldsSchema`)
+los omite con `.omit()` y se mezclan al payload después de `handleSubmit`.
+La validación de verdad está en el servidor con `reminderFieldsSchema`
+completo (array 1..3, cada uno entero 0..365, sin repetidos vía `.refine`;
+el mensaje en español ataja el duplicado antes de que lo rechace el índice
+único de Postgres con un error crudo).
+
+**Reconciliación al editar (`syncReminderNoticeThresholds` en `actions.ts`):**
+POR DIFERENCIA de clave natural (`notice_days`), no borrar-y-reinsertar. Los
+umbrales que ya existían con el mismo valor quedan intactos -- con su `id`,
+`created_at` y sobre todo su `notified_at`. Los que se sacaron: baja lógica
+(`deleted_at`, nunca DELETE físico). Los nuevos: `INSERT`. Criterio calcado
+del diff del alta masiva de unidades (`existingKeys.has(...)`), NO de
+`announcement_recipients` (que materializa una vez y nunca reconcilia).
+
+**Mail DEDICADO por umbral** (commit `e373015`). Es una capa NUEVA al lado
+de `sweepDueReminders`, separada del resumen diario. Tres archivos:
+
+- **`src/features/reminders/sweep-reminder-notice-thresholds.ts`**
+  (`sweepReminderNoticeThresholds`). Por cada `reminder_notice_thresholds`
+  activo con `notified_at IS NULL`, de un evento `pending`/`notified` no
+  borrado, que ya entró en su plazo (`daysBetween(today, due_date) <=
+notice_days` -- el MISMO `daysBetween` que el semáforo, reusado), hace
+  compare-and-swap: `UPDATE ... SET notified_at = now() WHERE id = ? AND
+notified_at IS NULL`. Si no tocó fila (otra corrida ya lo marcó), lo
+  descarta -- no se avisa dos veces, garantía atómica igual que
+  `sweepDueReminders` con `status = 'pending'`. Devuelve SOLO los que marcó
+  esta corrida. REGLA DURA: nunca propaga excepción.
+- **`src/features/notifications/email/send-reminder-thresholds-email.ts`**
+  (`sendReminderThresholdsEmail`). UN solo mail con TODOS los umbrales de la
+  organización que entraron hoy en su plazo, sean de uno o de varios
+  eventos. `subject`: `Avisos de eventos de {org} -- {fecha}`. Mismos
+  destinatarios (`getAdminEmails`, todos los `app_users` de la
+  organización) y mismo "loguear y seguir" que el resto de los mails. **Sin
+  marca de idempotencia propia** (a diferencia de `sendDailySummaryEmail` y
+  su `last_daily_summary_sent_on`): la da el `notified_at` del barrido. Si
+  el envío falla DESPUÉS de marcar, ese umbral queda marcado sin mail --
+  mismo trade-off "una vez, sin reintento" que la campana; se loguea con
+  `console.error`.
+- **`buildReminderThresholdsEmail`** en `email-content.ts` -- arma el HTML.
+  Reusa `renderEmailLayout` pero con asunto y cuerpo propios.
+
+**Cron (`src/features/cron/run-daily-cron.ts`):** el barrido de umbrales y su
+mail corren **ANTES** del resumen diario, a propósito (ver el criterio de
+abajo). `DailyCronOrgResult` / `DailyCronResult` sumaron
+`reminderThresholdsNotified` / `reminderThresholdsEmailStatus` /
+`reminderThresholdsNotifiedTotal`. Cada tarea del cron va en su propio
+try/catch.
+
+**Criterio: un evento con umbral ya avisado sale del resumen diario, salvo
+que esté vencido.** `getReminderIdsWithNotifiedThreshold(organizationId)` en
+`queries.ts` devuelve los IDs de eventos con algún
+`reminder_notice_thresholds` activo y `notified_at IS NOT NULL` (sin filtrar
+por el `deleted_at`/`status` del padre: si tiene un umbral notificado, ya se
+avisó). En `sendDailySummaryEmail`: si `getReminderUrgency === "upcoming"` Y
+el evento está en ese set -> se salta la sección "Eventos que necesitan
+atención" (ese mail puntual ya cumplió; repetirlo en el resumen general
+sería ruido). Si `=== "overdue"` (vencido) se sigue mostrando igual, tenga
+o no umbrales avisados. Por eso el barrido de umbrales corre antes que el
+resumen: un umbral marcado HOY tiene que sacar a su evento del resumen de
+HOY.
+
+Commits: `bffcd60` (tabla + trigger + backfill), `77db5b0` (formulario +
+listado + `syncReminderNoticeThresholds` en actions), `e373015` (barrido +
+mail dedicado + filtro del resumen).
+
+### 5. Se sacó "Recurrencia" del formulario (la columna queda dormida)
+
+El `<Select>` de "Recurrencia" (Ninguna / Mensual / Trimestral / Semestral /
+Anual) se sacó del alta y la edición, y de todo lugar donde se mostraba o se
+podía filtrar por él.
+
+**La columna `reminders.recurrence` y su enum `reminder_recurrence` SIGUEN
+en la base, intactos, sin migración.** Los eventos que ya tenían un valor
+`!= 'none'` lo conservan. Al crear: no se manda el campo -> la base aplica
+su default `'none'`. Al editar: el `UPDATE` de `updateReminderAction` no
+incluye `recurrence` -> el valor viejo del evento queda intacto.
+
+En `reminder-schema.ts` se sacó `recurrence` de `reminderFieldsSchema`
+(cliente y servidor), pero se **mantienen** exportados `REMINDER_RECURRENCES`
+/ `ReminderRecurrenceValue` / `RECURRENCE_LABEL`: mapean el enum que sigue en
+la base y vuelven a hacer falta el día que se reactive. `ReminderListRow`
+dejó de traer `recurrence` (`getReminderList` ya no lo selecciona).
+
+**Motivo:** el flujo de recurrencia real -- crear la fila siguiente de una
+serie al completar la actual, ver el comentario de `seriesId` en
+`src/db/schema/reminders.ts` -- nunca se construyó. Un selector que no hace
+nada confundía. Se deja la puerta abierta a nivel schema.
+
+Commit `4b6a52f`.
+
+### 6. Tope dinámico de los días de anticipación
+
+Un umbral de aviso no puede ser mayor que los días que faltan de HOY al
+vencimiento (no tiene sentido "avisar 10 días antes" de un evento que es en
+5).
+
+**Servidor (`reminder-schema.ts`):** `noticeThresholdsWithinDueDate` --
+`maxAllowed = Math.max(0, daysBetween(today, dueDate))`, y todos los
+umbrales `<= maxAllowed`. Reusa `daysBetween` de `reminder-urgency.ts`, no
+reimplementa el cálculo. `today` NO es un campo del formulario: lo inyecta
+la Server Action (`createReminderAction` / `updateReminderAction`) antes de
+parsear, con `formatDateSlug(new Date(), context.organization.timezone)` --
+la fecha civil en la zona de la ORGANIZACIÓN, mismo criterio que `page.tsx`
+y los barridos, nunca `new Date()` adentro del schema. `serverTodaySchema`
+(`z.string().regex(DATE_REGEX)`) lo valida. El `.refine` vive en
+`createReminderFormSchema` / `updateReminderFormSchema` (que juntan
+`dueDate` + `noticeDaysThresholds` + `today`), NO en `reminderFieldsSchema`
+-- así ese base sigue siendo un `z.object` plano y
+`reminderClientFieldsSchema` puede seguir usando `.omit()`.
+
+**Caso borde (fecha ya vencida):** `daysBetween < 0` -> el tope se acota a 0. Un evento con fecha pasada nace "vencido" y ningún "N días antes"
+positivo tiene sentido, pero "avisar el mismo día" (0) sí -- así se sigue
+pudiendo crear un evento con fecha pasada (con un único umbral de 0), sin
+agregar ninguna restricción nueva sobre la fecha en sí.
+
+**Cliente (`reminder-form.tsx`), además del servidor.** `browserTodaySlug()`
+= `formatDateSlug(new Date(), Intl.DateTimeFormat().resolvedOptions().timeZone)`
+-- la fecha local del NAVEGADOR: el cliente no conoce la zona de la
+organización; la diferencia no tiene efecto práctico salvo en la ventana de
+pocas horas alrededor de medianoche. `maxNoticeDaysFor(dueDate)` replica el
+`Math.max(0, daysBetween(...))` del servidor (importa `daysBetween`, no lo
+duplica). Con eso: cada `<input>` de umbral que supera el tope se marca
+inválido al instante (`clientThresholdsError`, con el MISMO mensaje que el
+servidor -- `DUE_DATE_NOTICE_MESSAGE`, exportado del schema), el `max` del
+input se ajusta dinámicamente, el botón "Agregar otro umbral" se
+deshabilita cuando ya no queda ningún valor entero válido y sin repetir
+(`cannotAddThreshold`), y el submit se bloquea
+(`disabled={... || !!clientThresholdsError}`) con una guarda de defensa en
+profundidad en `onSubmit`. El servidor sigue siendo la autoridad; el
+cliente solo evita que casi nunca se llegue a ver su error.
+
+Commit `4b6a52f`.
+
+### 7. Color por evento + calendario grande, con la urgencia separada a la lista
+
+Dos temas encadenados: un color decorativo elegible por evento, y un
+rediseño del calendario que lo muestra y que deja de mostrar urgencia. La
+urgencia (vencido / por vencer / al día) pasa a vivir SOLO en la lista y en
+"Próximos vencimientos".
+
+**Color: `reminders.color`** (migración `0045_curvy_green_goblin.sql`).
+`CREATE TYPE reminder_color AS ENUM('pizarra','rojo','naranja','ambar',
+'verde','azul','violeta','rosa')` y `ADD COLUMN color reminder_color
+DEFAULT 'pizarra' NOT NULL` (el `ADD COLUMN ... DEFAULT` rellena las filas
+viejas, sin backfill aparte). **Puramente decorativo/organizativo**, lo
+elige la persona; **sin ninguna relación con la urgencia** -- son dos
+sistemas a propósito separados.
+
+**Tokens `--evento-*` (8), aislados** (`src/app/globals.css`):
+`--evento-pizarra #64748b` (gris azulado neutro, default), `-rojo #dc2626`,
+`-naranja #ea580c`, `-ambar #d97706`, `-verde #16a34a`, `-azul #2563eb`,
+`-violeta #7c3aed`, `-rosa #db2777`. Familia ~600, lightness pareja,
+legibles como relleno sólido sobre las superficies claras del panel y sobre
+un fondo oscuro futuro (hoy el proyecto es solo tema claro). Prefijo propio,
+mismo criterio de aislamiento que `--landing-*`: **ningún valor compartido
+con `--urgente`/`--alta`/etc.**, así ajustar un color de evento nunca puede
+tocar el rojo de "urgente" ni al revés. `@theme inline` expone
+`--color-evento-*` -> utilidades `bg-evento-rojo`, etc.
+
+- `reminder-schema.ts`: `REMINDER_COLORS` / `ReminderColorValue` /
+  `REMINDER_COLOR_LABEL` / `DEFAULT_REMINDER_COLOR = "pizarra"`. Campo
+  `color: z.enum(REMINDER_COLORS)` en `reminderFieldsSchema` (validado en
+  servidor); `reminderClientFieldsSchema` lo `.omit()` -- el selector son
+  botones custom, se maneja en `useState` como `status`.
+- `src/features/reminders/components/reminder-color.tsx` (nuevo):
+  `REMINDER_COLOR_BG` (mapa valor -> clase `bg-evento-*`, clases LITERALES
+  para el scanner de Tailwind v4) + `<ReminderColorDot>`. Lo consumen el
+  selector del formulario y los puntos del calendario.
+- **Selector en `reminder-form.tsx`:** `role="radiogroup"` + un
+  `<button role="radio" aria-checked>` por color (círculo `size-8`, borde
+  permanente; el elegido lleva anillo + ✓). No hay precedente de "elegir
+  una opción mostrada visualmente" como control de formulario (los chips de
+  estado son `<Link>` de navegación), así que es un radiogroup ARIA a mano.
+
+**Calendario grande y sin urgencia** (`reminder-calendar.tsx`, commit
+`52bad1a`):
+
+- **Ya no muestra urgencia.** Se eliminaron `overdueDates` /
+  `upcomingDates` / `okDates`, `URGENCY_SEVERITY`, los
+  `modifiers`/`modifiersClassNames` de DayPicker que pintaban un punto por
+  peor-urgencia del día, la leyenda, y el `<ReminderUrgencyBadge>` del
+  detalle del día. También se borró `ReminderUrgencyDot` de
+  `reminder-urgency-badge.tsx` (quedó sin uso).
+- **Muestra el color de cada evento.** Un `<CalendarDay>` propio reemplaza
+  al `DayButton` de `components/ui/calendar.tsx` (pasado por
+  `components={{ DayButton }}`, memoizado por `remindersByDay` para no
+  remontar celdas al navegar de mes) y renderiza el número + hasta
+  `MAX_DOTS_PER_DAY = 4` puntos de color (uno por evento) + un `+N` en
+  texto chico si sobran. No hay un precedente exacto de "indicador de
+  desborde" compacto en el proyecto; lo más cercano es el "N más" en texto
+  de `announcement-segment-form`.
+- **Layout.** Pasa de un calendario `w-fit` chico con el panel de detalle
+  al costado (`lg:flex-row`) a **una sola columna**: calendario a todo el
+  ancho arriba (`classNames.root: "w-full"`, celdas
+  `min-h-14 sm:min-h-20 lg:min-h-24` sin `aspect-square`, `--cell-size` a
+  `--spacing(10)`), panel de detalle del día debajo.
+- **Click en un evento del detalle -> diálogo de edición real.**
+  `useState<ReminderListRow | undefined>` + `<ReminderFormDialog>`, mismo
+  mecanismo exacto que `RemindersList` (`page.tsx` ahora le pasa también
+  `buildingOptions` y `lockedBuildingId` al calendario). Guardar revalida
+  `/panel/reminders` (`revalidateReminderPaths`) y el calendario se repinta
+  sin recargar.
+
+**La urgencia, ahora solo en la lista y en "Próximos vencimientos".**
+`reminders-list.tsx` sumó una columna "Urgencia" con `<ReminderUrgencyBadge>`
+(`page.tsx` le pasa `today`). Los colores del badge salen de un **set nuevo
+aislado `--urgencia-*`** (mismo criterio de aislamiento que `--evento-*`):
+
+- `--urgencia-rojo #b42318` -- "Vencido" (el más grave, se mantiene
+  distinto).
+- `--urgencia-amarillo #a16207` -- **"por vencer" en AMARILLO, token
+  NUEVO**. Antes ese nivel usaba el naranja `--alta`. `#a16207` (oro
+  oscuro) elegido para que `text-urgencia-amarillo` sobre
+  `bg-urgencia-amarillo/10` pase 4.5:1 (WCAG 1.4.3, mismo listón que
+  `--alta`) y se distinga a ojo del `--alta` (#ae4408).
+- `--urgencia-verde #067647` -- "al día" / "próximo" en verde.
+
+Rojo y verde repiten el valor de `--urgente` / `--resuelto` **a propósito**:
+mismo color, token independiente, para poder moverlos por separado más
+adelante. **No se tocó `--urgente` ni `--alta` ni `--resuelto`** -- los
+comparten prioridad de reclamos, estados de comunicados, quota de storage y
+acentos de notificaciones. `getReminderUrgency` (la lógica del semáforo,
+`reminder-urgency.ts`) no cambió.
+
+### 8. Eventos "General" (sin edificio)
+
+**`reminders.building_id` ahora es nullable** (migración
+`0046_cynical_mindworm.sql`: `ALTER TABLE "reminders" ALTER COLUMN
+"building_id" DROP NOT NULL`, sin backfill). `null` = evento **"General"**:
+una tarea administrativa de toda la organización, no de un edificio puntual
+(VTV de la flota, vencimiento de un seguro, matrícula del administrador).
+
+**Patrón calcado tal cual de `announcements.building_id`**, capa por capa
+(ver esa sección y `src/db/schema/announcements.ts`):
+
+- **Schema.** `building_id uuid` sin `.notNull()`. La FK compuesta
+  `(building_id, organization_id) -> buildings(id, organization_id) ON
+DELETE restrict` **no cambió**: MATCH SIMPLE (default de Postgres) no
+  exige match cuando la columna es NULL.
+- **`queries.ts`.** `getReminderList` pasó de `.innerJoin(buildings, ...)` a
+  **`.leftJoin`**, y de paso el `ON` ahora compara también
+  `organization_id` (antes solo `buildings.id`). `ReminderListRow.buildingId`
+  y `.buildingName` -> `string | null`. Mismo motivo y forma que
+  `getAnnouncementsList`.
+- **`reminder-schema.ts`.** `buildingId: z.uuid("Elegí un edificio, o
+'General'.").nullable()` en `createReminderFormSchema`; `z.uuid().nullable()`
+  en `updateReminderFormSchema`. El campo SIGUE exigiendo una elección
+  explícita: el mensaje se dispara si llega un string vacío (nada elegido en
+  el `<select>`), no si llega `null`.
+- **`reminder-form.tsx`.** Sentinela `GENERAL_BUILDING_VALUE = "__general__"`
+  (Radix Select no admite `value=""`), `<SelectItem
+value={GENERAL_BUILDING_VALUE}>General</SelectItem>` primero en el
+  `<Select>`; al enviar se traduce a `null`. **Decisiones cerradas:** el
+  `<Select>` sigue apareciendo SOLO en alta y SOLO cuando no hay un edificio
+  lockeado en el header (NO en edición -- el edificio de un evento no se
+  cambia después de creado); la etiqueta es "General" (no "Todos los
+  edificios" como en comunicados); un evento General solo aparece con el
+  header en "Todos los edificios" (con un edificio puntual elegido, el
+  filtro ya lo excluye).
+- **`actions.ts`.** `updateReminderAction` y `softDeleteReminderAction`
+  usaban `eq(reminders.buildingId, buildingId)` en el `WHERE` -- con `null`
+  eso nunca matchea ninguna fila en SQL. Ahora: `buildingId === null ?
+isNull(reminders.buildingId) : eq(...)`. `softDeleteReminderAction` además
+  valida su argumento con `z.uuid().nullable()` (antes `z.uuid()`
+  obligatorio -> rebotaba con "Evento inválido"). No había un helper
+  null-safe en el proyecto, así que la guarda es inline.
+- **Vistas.** `reminders-list.tsx`, `upcoming-reminders-list.tsx` y
+  `reminder-calendar.tsx` muestran `{reminder.buildingName ?? "General"}`.
+- **Mails y notificación.** Cuando el edificio es `null` se **omite** el
+  fragmento del edificio (nunca "en null" ni "(null)"):
+  `buildReminderDueNotification` -> título `"Vencimiento próximo"` (sin
+  " en {edificio}"); `renderReminderList` (resumen diario) ->
+  `[Próximo] {título}` sin `({edificio})`; `renderReminderThresholdList`
+  (mail de umbrales) -> `{título} -- vence el ...` sin `({edificio})`. Los
+  tipos `DailySummaryReminderRow.buildingName` /
+  `ReminderThresholdEmailRow.buildingName` / `MarkedNoticeThreshold.buildingName`
+  pasaron a `string | null`.
+
+**Los dos bugs de INNER JOIN que se corrigieron.** Sin esto, un evento
+General se perdía EN SILENCIO -- sin ningún error -- en la campana y en los
+mails:
+
+1. **`getReminderList` (`queries.ts`).** Lo consumen `page.tsx` (las 3
+   vistas), `sweepDueReminders` (campana) y `sendDailySummaryEmail` (resumen
+   diario). Con INNER JOIN a `buildings`, un evento con `building_id NULL`
+   desaparecía de todos ellos. -> `LEFT JOIN`.
+2. **`sweepReminderNoticeThresholds` (`sweep-reminder-notice-thresholds.ts`).**
+   Tenía su PROPIO `.innerJoin(buildings, ...)` -> los umbrales de un evento
+   General nunca se barrían -> nunca salía su mail dedicado. -> `LEFT JOIN`
+   (con `organization_id` en el `ON`).
+
+**Sin cambio de RLS.** `reminders` y `reminder_notice_thresholds` solo
+tienen `deny_anon_authenticated`; ninguna policy menciona `building_id`, y
+`reminder_notice_thresholds` ni siquiera tiene esa columna.
+
+`seed.ts` sumó un 5º evento con `building_id: null` de ejemplo
+("Vencimiento de la matrícula del administrador").
+
+Commit `f83dae0`.
+
 ## Reglas de seguridad (no negociables)
 
 - RLS activo en todas las tablas. Ninguna tabla sin políticas.
